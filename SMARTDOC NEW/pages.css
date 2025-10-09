@@ -1,0 +1,202 @@
+/*signup page css*/
+.signup-container {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+    background: #0b0f14;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.signup-card { background: rgba(15,23,42,0.8); backdrop-filter: blur(12px); padding: 42px 36px; border-radius: 20px; width: 460px; box-shadow: 0 12px 36px rgba(0,0,0,0.45); text-align: center; animation: slideIn 0.6s ease-in-out; color:#e5e7eb; border:1px solid rgba(148,163,184,0.15); }
+
+.logo { font-size: 28px; font-weight: 800; color: #e5e7eb; margin-bottom: 8px; }
+
+.subtitle { font-size: 14px; color: #94a3b8; margin-bottom: 25px; }
+
+.input-group {
+  text-align: left;
+  margin-bottom: 18px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #444;
+}
+
+.input-group input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #334155; background: #0b1220; color: #e5e7eb; font-size: 14px; transition: 0.2s; }
+
+.input-group input:focus {
+  outline: none;
+  border-color: #e24b2e;
+  box-shadow: 0 0 0 2px rgba(226, 75, 46, 0.2);
+}
+
+.error {
+  color: red;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.signup-btn { width: 100%; padding: 12px; background: linear-gradient(90deg,#7c3aed,#4f46e5); color: white; font-weight: 700; font-size: 15px; border: none; border-radius: 12px; cursor: pointer; transition: 0.3s ease; }
+
+.signup-btn:hover {
+  background: #540397;
+}
+
+.extra-links {
+  margin-top: 20px;
+  font-size: 13px;
+}
+
+.extra-links .link {
+  color: #540397;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.extra-links .link:hover {
+  text-decoration: underline;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+
+/* login page css*/
+/* Background */
+.login-container {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #0b0f14;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Card */
+.login-card { background: rgba(15,23,42,0.8); backdrop-filter: blur(12px); padding: 42px 36px; border-radius: 20px; width: 420px; box-shadow: 0 12px 36px rgba(0,0,0,0.45); text-align: center; animation: fadeIn 0.6s ease-in-out; color:#e5e7eb; border:1px solid rgba(148,163,184,0.15); }
+
+/* Branding */
+.logo { font-size: 28px; font-weight: 800; color: #e5e7eb; margin-bottom: 8px; }
+
+.subtitle { font-size: 14px; color:#94a3b8; margin-bottom: 25px; }
+
+/* Inputs */
+.input-group {
+  text-align: left;
+  margin-bottom: 18px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #444;
+}
+
+.input-group input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #334155; background: #0b1220; color:#e5e7eb; font-size:14px; transition:0.2s; }
+
+.input-group input:focus {
+  outline: none;
+  border-color: #4a4ae8;
+  box-shadow: 0 0 0 2px rgba(74, 74, 232, 0.2);
+}
+
+/* Error */
+.error {
+  color: red;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* Button */
+.login-btn { width: 100%; padding: 12px; background: linear-gradient(90deg,#7c3aed,#4f46e5); color: white; font-weight: 700; font-size: 15px; border: none; border-radius: 12px; cursor: pointer; transition: 0.3s ease; }
+
+.login-btn:hover {
+  background: #3b3bbf;
+}
+
+/* Extra links */
+.extra-links {
+  margin-top: 20px;
+  font-size: 13px;
+}
+
+.extra-links a {
+  margin: 0 8px;
+  color: #4a4ae8;
+  text-decoration: none;
+  transition: 0.2s;
+}
+
+.extra-links a:hover {
+  text-decoration: underline;
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/*
+ * Official Google Sign-In Button Style
+ * This replicates the look of the button in your screenshot.
+ */
+.google-signin-btn {
+  /* Layout */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  
+  /* Sizing */
+  width: 100%;
+  padding: 10px 15px;
+
+  /* Style */
+  background-color: #ffffff;
+  color: #333333; /* Dark grey text for contrast */
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  
+  /* Font */
+  font-family: 'Roboto', sans-serif; /* Google's font */
+  font-size: 16px;
+  font-weight: 500;
+  
+  /* Interaction */
+  cursor: pointer;
+  transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+.google-signin-btn:hover {
+  background-color: #f8f9fa;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Style for the Google logo inside the button */
+.google-signin-btn img {
+  margin-right: 12px;
+  height: 20px;
+  width: 20px;
+}
