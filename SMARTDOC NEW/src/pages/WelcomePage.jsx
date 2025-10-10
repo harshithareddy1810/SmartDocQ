@@ -103,18 +103,18 @@ const WelcomePage = () => {
             <p className="quote-text">
               "It's like ChatGPT, but for <span className="highlight">research papers</span>."
             </p>
-            <div className="quote-author">
+            {/* <div className="quote-author">
               <div className="author-avatar"></div>
               <div className="author-info">
                 <div className="author-name">Mushtaq Bilal, PhD</div>
                 <div className="author-handle">@MushtaqBilalPhD</div>
               </div>
-            </div>
+            </div> */}
           </div>
-          <div className="quote-icons">
+          {/* <div className="quote-icons">
             <div className="heart-icon">❤️</div>
             <div className="thumbs-icon">👍</div>
-          </div>
+          </div> */}
         </div>
 
         <div className="features-intro">
