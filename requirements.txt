@@ -140,3 +140,14 @@ websockets==15.0.1
 zipp==3.23.0
 zstandard==0.23.0
 gunicorn
+
+Flask
+gunicorn
+sqlalchemy
+psycopg2-binary
+google-generativeai
+python-dotenv
+pinecone-client
+chromadb
+flask-bcrypt
+flask-cors
