@@ -31,6 +31,7 @@ import fitz  # PyMuPDF
 import docx
 from PIL import Image
 import pytesseract
+from vector_store import add_document, query_similar
 
 # New deps for URL importing
 import requests
@@ -350,8 +351,19 @@ def upload_and_process_document(current_user):
             )
             db.add(new_document)
             db.commit()
+            # db.refresh(new_document)
+            # return jsonify({"message": "Document processed successfully", "doc_id": new_document.id}), 200
             db.refresh(new_document)
-            return jsonify({"message": "Document processed successfully", "doc_id": new_document.id}), 200
+
+            # ⬇️ Store text in ChromaDB
+            try:
+                add_document(new_document.id, extracted_text)
+                app.logger.info(f"Added document {new_document.id} to ChromaDB")
+            except Exception as e:
+                app.logger.warning(f"ChromaDB add failed: {e}")
+
+            return jsonify({"message": "Document processed successfully",
+                            "doc_id": new_document.id}), 200
 
         # ---- 2) JSON PATH (application/json) ----
         if request.is_json:
@@ -603,7 +615,18 @@ def ask_question(current_user):
 
         # ---- Live Gemini AI ----
         from prompts import build_prompt, parse_llm_json
-        safe_context = (document.text or "")[:6000]
+                # safe_context = (document.text or "")[:6000]
+                # Retrieve relevant text from ChromaDB to enrich context
+        try:
+            similar_chunks, _ = query_similar(question)
+            context_from_chroma = " ".join(similar_chunks)
+        except Exception as e:
+            app.logger.warning(f"ChromaDB query failed: {e}")
+            context_from_chroma = ""
+
+        # Use both DB text and retrieved context
+        safe_context = ((document.text or "")[:3000] + "\n" + context_from_chroma)[:6000]
+
         prompt = build_prompt(context=safe_context, question=question)
         model = genai.GenerativeModel(MODEL_NAME)
 
