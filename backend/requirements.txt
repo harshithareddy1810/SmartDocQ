@@ -231,7 +231,7 @@ Pillow==11.3.0
 pinecone-client==4.1.2
 posthog==5.4.0
 proto-plus==1.26.1
-protobuf==6.31.1
+protobuf>=3.20.2,<6.0.0
 psycopg2-binary
 pyarrow==21.0.0
 pyasn1==0.6.1
