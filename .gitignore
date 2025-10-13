@@ -1,2 +1,4 @@
 node_modules
 .env
+# Virtual environment
+venv/
