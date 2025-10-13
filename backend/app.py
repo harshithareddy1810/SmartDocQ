@@ -1,7 +1,6 @@
 # backend/app.py
 from __future__ import annotations
 import os
-import time
 import logging
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -184,6 +183,31 @@ def extract_text_from_docx(filepath: str) -> str:
     d = docx.Document(filepath)
     return "\n".join(p.text for p in d.paragraphs)
 
+
+def convert_docx_to_html(filepath: str) -> str:
+    """Basic DOCX -> HTML conversion using python-docx.
+    Produces paragraph and heading tags; not a perfect Word render but preserves structure.
+    """
+    try:
+        d = docx.Document(filepath)
+        parts = ["<div class='docx-html'>"]
+        for p in d.paragraphs:
+            text = (p.text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            style = (p.style.name or "").lower() if getattr(p, 'style', None) else ""
+            if style.startswith('heading') or style.startswith('h1'):
+                parts.append(f"<h2>{text}</h2>")
+            elif style.startswith('h2'):
+                parts.append(f"<h3>{text}</h3>")
+            else:
+                # simple handling for bold/italic isn't implemented; keep plain
+                parts.append(f"<p>{text}</p>")
+        parts.append("</div>")
+        return "\n".join(parts)
+    except Exception:
+        import traceback
+        app.logger.warning("DOCX->HTML conversion failed:\n" + traceback.format_exc())
+        return "<pre>Failed to convert document to HTML.</pre>"
+
 def extract_text_from_image(filepath: str) -> str:
     img = Image.open(filepath).convert("RGB")
     return pytesseract.image_to_string(img)
@@ -336,6 +360,16 @@ def upload_and_process_document(current_user):
                 extracted_text = extract_text_from_pdf(filepath)
             elif ext == ".docx":
                 extracted_text = extract_text_from_docx(filepath)
+                # Additionally create an HTML preview for richer display
+                try:
+                    html_content = convert_docx_to_html(filepath)
+                    html_filename = os.path.splitext(filename)[0] + ".html"
+                    html_path = os.path.join(app.config["UPLOAD_FOLDER"], html_filename)
+                    with open(html_path, "w", encoding="utf-8") as hf:
+                        hf.write(html_content)
+                    app.logger.info(f"Wrote HTML preview to {html_path}")
+                except Exception:
+                    app.logger.exception("Failed to write HTML preview for docx")
             elif ext == ".txt":
                 with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
                     extracted_text = f.read()
@@ -632,7 +666,7 @@ def ask_question(current_user):
 
         try:
             response = model.generate_content(prompt, generation_config={"temperature": TEMPERATURE})
-        except Exception as e:
+        except Exception:
             if TESTING_MODE_ON_RATE_LIMIT:
                 payload = {"answer": "This is a testing response (rate limit).",
                            "_used_model": MODEL_NAME, "_mode": "rate-limit-mock"}
@@ -662,9 +696,10 @@ def ask_question(current_user):
         parsed["message_id"] = assistant_msg.id
         return jsonify(parsed), 200
 
-    except Exception as e:
+    except Exception:
+        import traceback
         db.rollback()
-        fail_text = f"Failed to get response: {str(e)}"
+        fail_text = "Failed to get response: " + traceback.format_exc()
         assistant_msg = models.Message(role="assistant", content=fail_text, document_id=doc_id)
         db.add(assistant_msg)
         db.commit()
@@ -673,6 +708,10 @@ def ask_question(current_user):
     finally:
         db.close()
 
+# if __name__ == "__main__":
+#     import jwt  # noqa: F401
+#     app.run(host="0.0.0.0", port=5001, debug=True)
 if __name__ == "__main__":
     import jwt  # noqa: F401
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    port = int(os.environ.get("PORT", 8080))  # Render provides this
+    app.run(host="0.0.0.0", port=port, debug=False)

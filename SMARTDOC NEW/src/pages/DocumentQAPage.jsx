@@ -1,5 +1,6 @@
 // src/pages/DocumentQAPage.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import mammoth from 'mammoth';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -32,7 +33,7 @@ import ReactMarkdown from 'react-markdown';
 import '../index.css';
 
 
-const API_BASE = 'http://localhost:5001';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
 
 
 /** -------- Filled thumbs feedback (👍 / 👎) -------- */
@@ -94,6 +95,7 @@ const PdfPane = React.memo(function PdfPane({
   onSetNumPages,
 }) {
   const docUrl = useMemo(() => (filename ? `${API_BASE}/uploads/${filename}` : null), [filename]);
+  const [loadError, setLoadError] = React.useState(null);
 
 
   const onDocumentLoadSuccess = useCallback(
@@ -114,7 +116,7 @@ const PdfPane = React.memo(function PdfPane({
         key={filename} // reinit only when file changes
         file={{ url: docUrl }}
         onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={(error) => console.error('PDF failed to load:', error)}
+        onLoadError={(error) => { console.error('PDF failed to load:', error); setLoadError(error?.message || String(error)); }}
         loading={<p>Loading PDF...</p>}
         error={<p>Failed to load PDF. Please check backend URL.</p>}
       >
@@ -131,12 +133,116 @@ const PdfPane = React.memo(function PdfPane({
           ))}
         </div>
       </Document>
+      {loadError && (
+        <div style={{ padding: 12, color: '#fca5a5' }}>
+          <p>PDF viewer failed: {loadError}</p>
+          <p>
+            <a href={docUrl} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>Open / download raw PDF</a>
+          </p>
+          <div style={{ marginTop: 8 }}>
+            <iframe src={docUrl} title={filename} style={{ width: '100%', height: '60vh', border: 'none' }} />
+          </div>
+        </div>
+      )}
     </>
   );
 }, (prev, next) => {
   // prevent re-render unless the file or current page changes
   return prev.filename === next.filename && prev.numPages === next.numPages;
 });
+
+
+/** -------- DocumentPreview: images, text/docx, pdf fallback -------- */
+const DocumentPreview = React.memo(function DocumentPreview({ doc, numPages, onSetNumPages }) {
+  const filename = doc?.filename || "";
+  const lower = filename.toLowerCase();
+  const docUrl = filename ? `${API_BASE}/uploads/${filename}` : null;
+
+  // Image types
+  if (lower.match(/\.(png|jpe?g|gif|bmp|tiff|webp)$/)) {
+    return (
+      <div className="image-preview" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <img
+          src={docUrl}
+          alt={filename}
+          style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 200px)', objectFit: 'contain', borderRadius: 8 }}
+          onError={(e) => { e.target.onerror = null; e.target.src = ''; }}
+        />
+      </div>
+    );
+  }
+
+  // PDF -> reuse PdfPane
+  if (lower.endsWith('.pdf')) {
+    // Use a simple iframe fallback for reliability across browsers/dev setups.
+    if (!docUrl) return <p>No PDF URL available.</p>;
+    return (
+      <div style={{ width: '100%', height: '100%' }}>
+        <iframe src={docUrl} title={filename} style={{ width: '100%', height: 'calc(100vh - 180px)', border: 'none' }} />
+        <div style={{ padding: 8 }}>
+          <a href={docUrl} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>Open raw PDF in new tab</a>
+        </div>
+      </div>
+    );
+    // If needed, PdfPane can be used instead of iframe for advanced rendering:
+    // return <PdfPane filename={filename} numPages={numPages} onSetNumPages={onSetNumPages} />;
+  }
+
+  // DOCX: fetch binary and convert to HTML (preserve formatting)
+  if (lower.endsWith('.docx')) {
+    const [html, setHtml] = React.useState(null);
+    const [loadingHtml, setLoadingHtml] = React.useState(false);
+    useEffect(() => {
+      let mounted = true;
+      if (!docUrl) return;
+      setLoadingHtml(true);
+      (async () => {
+        try {
+          const res = await fetch(docUrl);
+          const arrayBuffer = await res.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          if (!mounted) return;
+          setHtml(result?.value || '<div>No content</div>');
+        } catch (e) {
+          console.error('Failed to load/convert docx:', e);
+          if (mounted) setHtml('<pre style="white-space:pre-wrap;">Failed to render document.</pre>');
+        } finally {
+          if (mounted) setLoadingHtml(false);
+        }
+      })();
+      return () => { mounted = false; };
+    }, [docUrl]);
+
+    if (loadingHtml && !html) return <div style={{ padding: 18, color: '#cbd5e1' }}>Rendering document...</div>;
+    return (
+      <div className="docx-preview" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 160px)', padding: 12 }}>
+        <div dangerouslySetInnerHTML={{ __html: html || '<div>No content</div>' }} />
+      </div>
+    );
+  }
+
+  // Text formats (server extracts text for txt) - render plain text
+  if (lower.endsWith('.txt') || doc?.text) {
+    const text = doc?.text || 'No preview available for this document.';
+    return (
+      <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 160px)', padding: 12 }}>
+        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', color: '#e5e7eb' }}>{text}</pre>
+      </div>
+    );
+  }
+
+  // Other / unknown types: show download link
+  if (filename) {
+    return (
+      <div style={{ padding: 18, color: '#cbd5e1' }}>
+        <p>No preview available for this file type.</p>
+        <a href={docUrl} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>Open / download {filename}</a>
+      </div>
+    );
+  }
+
+  return <p>No preview available.</p>;
+}, (prev, next) => prev.doc?.filename === next.doc?.filename && prev.doc?.text === next.doc?.text);
 
 
 const DocumentQAPage = () => {
@@ -304,7 +410,6 @@ const DocumentQAPage = () => {
         continuous: true,
         interimResults: true,
         language: 'en-US',
-        onResult: (result) => setCurrentQuestion(result),
       });
     }
   }, [browserSupportsSpeechRecognition, googleAssistantListening]);
@@ -392,12 +497,8 @@ const DocumentQAPage = () => {
 
       <main className="qa-container">
         <div className="qa-left pdf-viewer">
-          {doc?.filename ? (
-            <PdfPane
-              filename={doc.filename}
-              numPages={numPages}
-              onSetNumPages={onSetNumPages}
-            />
+          {doc ? (
+            <DocumentPreview doc={doc} numPages={numPages} onSetNumPages={onSetNumPages} />
           ) : (
             <p>Loading document...</p>
           )}
@@ -515,12 +616,11 @@ const DocumentQAPage = () => {
                     setGoogleAssistantListening(false);
                     setIsStandardMicActive(true);
                     resetTranscript();
-                    SpeechRecognition.startListening({
-                      continuous: true,
-                      interimResults: true,
-                      language: 'en-US',
-                      onResult: (result) => setCurrentQuestion(result),
-                    });
+                      SpeechRecognition.startListening({
+                        continuous: true,
+                        interimResults: true,
+                        language: 'en-US',
+                      });
                   }
                 }}
                 className="mic-btn"
@@ -569,7 +669,7 @@ const DocumentQAPage = () => {
         .qa-page-layout { min-height: 100vh; display:flex; position:relative; background:#0b0f14; }
         .qa-container { width:100%; display:flex; gap: 28px; padding: 60px 70px; position:relative; z-index:1; }
         /* Neat glass containers matching site theme */
-        .qa-left { flex: 1; overflow: hidden; display:flex; flex-direction: column; background: rgba(15,23,42,0.80); border:1px solid rgba(148,163,184,0.20); border-radius: 18px; backdrop-filter: blur(8px); box-shadow: 0 16px 36px rgba(0,0,0,0.35); padding: 14px; }
+  .qa-left { flex: 1; overflow: auto; display:flex; flex-direction: column; background: rgba(15,23,42,0.80); border:1px solid rgba(148,163,184,0.20); border-radius: 18px; backdrop-filter: blur(8px); box-shadow: 0 16px 36px rgba(0,0,0,0.35); padding: 14px; }
         .qa-right { width: 42%; display:flex; flex-direction: column; background: rgba(15,23,42,0.80); border:1px solid rgba(148,163,184,0.20); border-radius: 18px; backdrop-filter: blur(8px); box-shadow: 0 16px 36px rgba(0,0,0,0.35); padding: 16px; }
         .qa-history { flex:1; overflow-y:auto; padding: 8px; display:flex; flex-direction: column; gap: 14px; }
         .chat-message { display:flex; gap:10px; max-width: 92%; }
@@ -590,6 +690,13 @@ const DocumentQAPage = () => {
         .pdf-viewer { padding: 0; min-height: 0; }
         .pdf-scroll { overflow-y: auto; padding-right: 8px; max-height: calc(100vh - 160px); }
         .pdf-page { display:flex; justify-content:center; margin-bottom: 18px; }
+  /* DOCX preview styling (mammoth output) */
+  .docx-preview { color: #e5e7eb; }
+  .docx-preview p { color: #e5e7eb; margin-bottom: 0.9rem; line-height: 1.6; }
+  .docx-preview h1, .docx-preview h2, .docx-preview h3 { color: #fff; margin: 0.6rem 0; }
+  .docx-preview a { color: #60a5fa; text-decoration: underline; }
+  .docx-preview ul, .docx-preview ol { margin-left: 1.2rem; margin-bottom: 0.9rem; }
+  .docx-preview img { max-width: 100%; height: auto; display:block; margin: 12px 0; }
         @media (max-width: 1024px) {
           .qa-right { width: 100%; }
           .qa-container { flex-direction: column; padding: 40px 22px; gap: 16px; }

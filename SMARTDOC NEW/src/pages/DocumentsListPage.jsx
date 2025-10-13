@@ -89,7 +89,7 @@ function DocumentsPage() {
       return;
     }
     axios
-      .get("http://localhost:5001/api/documents", {
+      .get((import.meta.env.VITE_API_BASE || "http://localhost:8080") + "/api/documents", {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setDocs(res.data))
@@ -107,7 +107,7 @@ function DocumentsPage() {
       return;
     }
     try {
-      await axios.delete(`http://localhost:5001/api/documents/${id}`, {
+      await axios.delete((import.meta.env.VITE_API_BASE || "http://localhost:8080") + `/api/documents/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       // Refresh list
@@ -125,7 +125,7 @@ function DocumentsPage() {
     try {
       await Promise.all(
         ids.map((id) =>
-          axios.delete(`http://localhost:5001/api/documents/${id}`, {
+          axios.delete((import.meta.env.VITE_API_BASE || "http://localhost:8080") + `/api/documents/${id}`, {
             headers: { Authorization: `Bearer ${token}` },
           })
         )

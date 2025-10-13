@@ -53,7 +53,7 @@ const SignupPage = ({ users, setUsers }) => {
     }
 
     try {
-      const response = await axios.post("http://localhost:5001/api/register", {
+      const response = await axios.post((import.meta.env.VITE_API_BASE || "http://localhost:8080") + "/api/register", {
         name: formData.name,
         email: formData.email,
         password: formData.password,

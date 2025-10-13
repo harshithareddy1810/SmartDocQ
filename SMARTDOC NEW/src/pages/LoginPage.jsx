@@ -6,7 +6,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import "../../pages.css";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5001";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
 
 const LoginPage = () => {
   const navigate = useNavigate();

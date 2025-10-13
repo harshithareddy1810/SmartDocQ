@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { FiUpload, FiFileText, FiFile, FiFilePlus, FiImage, FiLink, FiEdit3, FiChevronDown } from "react-icons/fi";
 
-const API_BASE = "http://localhost:5001";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
 
 const UploadPage = () => {
   const navigate = useNavigate();
