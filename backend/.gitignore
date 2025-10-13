@@ -2,3 +2,5 @@ uploads/
 __pycache__/
 .env
 venv/
+# Python virtual environment
+backend/venv/
