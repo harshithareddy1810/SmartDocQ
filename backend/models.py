@@ -69,6 +69,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, func
 from sqlalchemy.orm import relationship, DeclarativeBase
 from datetime import datetime
+import secrets
 
 class Base(DeclarativeBase):
     pass
@@ -125,3 +126,13 @@ class Feedback(Base):
     rating = Column(String(8))  # 'up' | 'down'
     note = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=False), server_default=func.now())
+
+class SharedConversation(Base):
+    __tablename__ = "shared_conversations"
+    id = Column(Integer, primary_key=True, index=True)
+    share_id = Column(String(32), unique=True, index=True, nullable=False, default=lambda: secrets.token_urlsafe(16))
+    document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=False), server_default=func.now())
+    expires_at = Column(DateTime(timezone=False), nullable=True)
+    is_active = Column(Integer, default=1)  # 1 = active, 0 = disabled

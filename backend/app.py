@@ -998,6 +998,150 @@ Answer:"""
     finally:
         db.close()
 
+# =========================
+# Share Routes
+# =========================
+@app.post("/api/share")
+@token_required
+def create_share_link(current_user):
+    """Create a shareable link for a document conversation"""
+    db: Session = next(get_db())
+    data = request.get_json() or {}
+    
+    try:
+        doc_id = int(data.get("doc_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid doc_id"}), 400
+    
+    try:
+        # Verify document exists and user has access
+        document = db.query(models.Document).filter(models.Document.id == doc_id).first()
+        if not document:
+            return jsonify({"error": "Document not found"}), 404
+        
+        if hasattr(models.Document, "user_id") and getattr(current_user, "id", None):
+            if document.user_id != current_user.id:
+                return jsonify({"error": "Not authorized to share this document"}), 403
+        
+        # Check if share already exists
+        existing_share = db.query(models.SharedConversation).filter(
+            models.SharedConversation.document_id == doc_id,
+            models.SharedConversation.is_active == 1
+        ).first()
+        
+        if existing_share:
+            share_id = existing_share.share_id
+        else:
+            # Create new share
+            import secrets
+            share_id = secrets.token_urlsafe(16)
+            
+            # Optional: set expiration (e.g., 30 days from now)
+            # expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+            
+            new_share = models.SharedConversation(
+                share_id=share_id,
+                document_id=doc_id,
+                created_by=getattr(current_user, "id", None),
+                # expires_at=expires_at,
+            )
+            db.add(new_share)
+            db.commit()
+            db.refresh(new_share)
+        
+        # Build full URL
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        share_url = f"{frontend_url}/share/{share_id}"
+        
+        return jsonify({
+            "message": "Share link created",
+            "share_id": share_id,
+            "share_url": share_url
+        }), 200
+        
+    except Exception as e:
+        db.rollback()
+        app.logger.exception("Error creating share link")
+        return jsonify({"error": f"Failed to create share link: {str(e)}"}), 500
+    finally:
+        db.close()
+
+@app.get("/api/share/<share_id>")
+def get_shared_conversation(share_id: str):
+    """Public endpoint to retrieve shared conversation - no auth required"""
+    db: Session = next(get_db())
+    try:
+        # Find share record
+        share = db.query(models.SharedConversation).filter(
+            models.SharedConversation.share_id == share_id,
+            models.SharedConversation.is_active == 1
+        ).first()
+        
+        if not share:
+            return jsonify({"error": "Share not found or has been disabled"}), 404
+        
+        # Check if expired
+        if share.expires_at and datetime.now(timezone.utc) > share.expires_at:
+            return jsonify({"error": "Share link has expired"}), 410
+        
+        # Get document
+        document = db.query(models.Document).filter(
+            models.Document.id == share.document_id
+        ).first()
+        
+        if not document:
+            return jsonify({"error": "Document not found"}), 404
+        
+        # Get messages
+        messages = (
+            db.query(models.Message)
+            .filter(models.Message.document_id == share.document_id)
+            .order_by(models.Message.created_at.asc())
+            .all()
+        )
+        
+        return jsonify({
+            "filename": document.filename,
+            "text": document.text,
+            "conversation": [
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "time": m.created_at.strftime("%H:%M") if getattr(m, "created_at", None) else None
+                } for m in messages
+            ],
+            "created_at": document.created_at.isoformat() if getattr(document, "created_at", None) else None,
+        })
+    finally:
+        db.close()
+
+@app.delete("/api/share/<share_id>")
+@token_required
+def delete_share_link(current_user, share_id: str):
+    """Disable a share link"""
+    db: Session = next(get_db())
+    try:
+        share = db.query(models.SharedConversation).filter(
+            models.SharedConversation.share_id == share_id
+        ).first()
+        
+        if not share:
+            return jsonify({"error": "Share not found"}), 404
+        
+        # Verify ownership
+        if getattr(current_user, "id", None) and share.created_by != current_user.id:
+            return jsonify({"error": "Not authorized to delete this share"}), 403
+        
+        share.is_active = 0
+        db.commit()
+        
+        return jsonify({"message": "Share link disabled"}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": f"Failed to disable share: {str(e)}"}), 500
+    finally:
+        db.close()
+
 # if __name__ == "__main__":
 #     import jwt  # noqa: F401
 #     app.run(host="0.0.0.0", port=5001, debug=True)

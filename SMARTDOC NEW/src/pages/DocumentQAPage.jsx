@@ -22,7 +22,7 @@ pdfjs.GlobalWorkerOptions.workerSrc =
 
 // Voice + Icons
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
-import { FiMic, FiMicOff, FiCopy } from 'react-icons/fi';
+import { FiMic, FiMicOff, FiCopy, FiShare2 } from 'react-icons/fi';
 import { BsHandThumbsUp, BsHandThumbsUpFill, BsHandThumbsDown, BsHandThumbsDownFill } from "react-icons/bs";
 
 
@@ -272,6 +272,8 @@ const DocumentQAPage = () => {
   const [assistantConversation, setAssistantConversation] = useState([]);
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [showShareModal, setShowShareModal] = useState(false);
 
 
   const tokenGuard = useCallback(() => {
@@ -434,6 +436,32 @@ const DocumentQAPage = () => {
     alert("Copied to clipboard!");
   }, []);
 
+
+  const handleShare = useCallback(async () => {
+    const token = tokenGuard();
+    if (!token || !docId) return;
+
+    try {
+      const res = await axios.post(
+        `${API_BASE}/api/share`,
+        { doc_id: Number(docId) },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
+
+      setShareUrl(res.data.share_url);
+      setShowShareModal(true);
+    } catch (err) {
+      console.error('Share failed:', err);
+      alert('Failed to create share link: ' + (err.response?.data?.error || err.message));
+    }
+  }, [docId, tokenGuard]);
+
+  const copyShareLink = useCallback(() => {
+    navigator.clipboard.writeText(shareUrl);
+    alert('Share link copied to clipboard!');
+  }, [shareUrl]);
+
+
   return (
     <div className="qa-page-layout" style={{ position: 'relative' }}>
       {/* Background to match site theme */}
@@ -459,6 +487,27 @@ const DocumentQAPage = () => {
               <div style={{ color:'#e5e7eb', fontWeight:700, fontSize:16 }}>Ask your document</div>
               <div style={{ color:'#94a3b8', fontSize:12 }}>{doc?.filename || 'Loading…'}</div>
             </div>
+            <button
+              onClick={handleShare}
+              className="share-btn"
+              title="Share conversation"
+              style={{
+                background: 'rgba(148, 163, 184, 0.12)',
+                border: '1px solid rgba(148, 163, 184, 0.2)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                color: '#e5e7eb',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '14px',
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              <FiShare2 size={16} /> Share
+            </button>
           </div>
 
 
@@ -745,6 +794,25 @@ const DocumentQAPage = () => {
         </div>
       )}
 
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+          <div className="share-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Share Conversation</h3>
+            <p>Anyone with this link can view this conversation:</p>
+            <div className="share-link-container">
+              <input type="text" value={shareUrl} readOnly />
+              <button onClick={copyShareLink} className="copy-link-btn">
+                <FiCopy /> Copy
+              </button>
+            </div>
+            <button onClick={() => setShowShareModal(false)} className="close-modal-btn">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Scoped styling for professional dark-glass chat UI */}
       <style>{`
         .qa-page-layout { min-height: 100vh; display:flex; position:relative; background:#0b0f14; }
@@ -1015,20 +1083,101 @@ const DocumentQAPage = () => {
           transform: translateY(-1px);
         }
 
-        @media (max-width: 1024px) {
-          .qa-right { width: 100%; }
-          .qa-container { flex-direction: column; padding: 40px 22px; gap: 16px; }
-          .assistant-popup {
-            right: 12px;
-            bottom: 12px;
-            width: calc(100vw - 40px);
-            max-width: 420px;
-            height: 500px;
-            max-height: calc(100vh - 100px);
-          }
-          .assistant-popup.minimized {
-            height: 60px;
-          }
+        /* Modal styles */
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+          animation: fadeIn 0.2s ease;
+        }
+        
+        .share-modal {
+          background: rgba(15, 23, 42, 0.98);
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          border-radius: 16px;
+          padding: 32px;
+          max-width: 500px;
+          width: 90%;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+          animation: slideUp 0.3s ease;
+        }
+        
+        .share-modal h3 {
+          color: #e5e7eb;
+          font-size: 20px;
+          font-weight: 700;
+          margin: 0 0 12px;
+        }
+        
+        .share-modal p {
+          color: #94a3b8;
+          margin: 0 0 20px;
+          line-height: 1.5;
+        }
+        
+        .share-link-container {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        
+        .share-link-container input {
+          flex: 1;
+          padding: 10px 14px;
+          background: rgba(2, 6, 23, 0.6);
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          border-radius: 8px;
+          color: #e5e7eb;
+          font-size: 14px;
+        }
+        
+        .copy-link-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 10px 16px;
+          background: linear-gradient(90deg, #7c3aed, #4f46e5);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 600;
+          transition: all 0.2s;
+        }
+        
+        .copy-link-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(124, 58, 237, 0.4);
+        }
+        
+        .close-modal-btn {
+          width: 100%;
+          padding: 10px;
+          background: rgba(148, 163, 184, 0.12);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 8px;
+          color: #cbd5e1;
+          cursor: pointer;
+          font-weight: 600;
+          transition: all 0.2s;
+        }
+        
+        .close-modal-btn:hover {
+          background: rgba(148, 163, 184, 0.18);
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>

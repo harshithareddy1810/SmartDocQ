@@ -10,6 +10,7 @@ import DocumentsListPage from "./pages/DocumentsListPage";
 import DocumentQAPage from "./pages/DocumentQAPage";
 import AppHeader from "./components/AppHeader";
 import AdminDashboard from "./pages/AdminDashboard";
+import SharedConversationPage from "./pages/SharedConversationPage";
 
 import { useAuth } from "./context/AuthContext";
 
@@ -80,6 +81,7 @@ function App() {
             </RequireAuth>
           }
         />
+        <Route path="/share/:shareId" element={<SharedConversationPage />} />
       </Routes>
     </>
   );
