@@ -13,6 +13,8 @@ const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [chunks, setChunks] = useState([]);
+  const [embeddings, setEmbeddings] = useState([]);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   
@@ -21,6 +23,9 @@ const AdminDashboard = () => {
   const [userRoleFilter, setUserRoleFilter] = useState("all");
   const [docSearch, setDocSearch] = useState("");
   const [docTypeFilter, setDocTypeFilter] = useState("all");
+  const [chunkSearch, setChunkSearch] = useState("");
+  const [chunkDocFilter, setChunkDocFilter] = useState("all");
+  const [embeddingSearch, setEmbeddingSearch] = useState("");
 
   useEffect(() => {
     const token = localStorage.getItem("jwt_token");
@@ -36,7 +41,7 @@ const AdminDashboard = () => {
     try {
       console.log("Fetching admin data with token:", token.substring(0, 20) + "...");
       
-      const [statsRes, usersRes, docsRes] = await Promise.all([
+      const [statsRes, usersRes, docsRes, chunksRes, embeddingsRes] = await Promise.all([
         axios.get(`${API_BASE}/api/admin/stats`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -46,11 +51,19 @@ const AdminDashboard = () => {
         axios.get(`${API_BASE}/api/admin/documents`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
+        axios.get(`${API_BASE}/api/admin/chunks`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(err => ({ data: [] })),
+        axios.get(`${API_BASE}/api/admin/embeddings`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(err => ({ data: [] })),
       ]);
 
       setStats(statsRes.data);
       setUsers(usersRes.data);
       setDocuments(docsRes.data);
+      setChunks(chunksRes.data);
+      setEmbeddings(embeddingsRes.data);
     } catch (error) {
       console.error("Failed to fetch admin data:", error);
       console.error("Error response:", error.response?.data);
@@ -113,6 +126,46 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteChunk = async (chunkId) => {
+    if (!window.confirm(`Are you sure you want to delete this chunk?`)) {
+      return;
+    }
+
+    const token = localStorage.getItem("jwt_token");
+    try {
+      await axios.delete(`${API_BASE}/api/admin/chunks/${chunkId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      setChunks(chunks.filter(c => c.id !== chunkId));
+      alert("Chunk deleted successfully");
+      fetchAdminData(token);
+    } catch (error) {
+      console.error("Failed to delete chunk:", error);
+      alert("Failed to delete chunk: " + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const handleDeleteEmbedding = async (embeddingId) => {
+    if (!window.confirm(`Are you sure you want to delete this embedding?`)) {
+      return;
+    }
+
+    const token = localStorage.getItem("jwt_token");
+    try {
+      await axios.delete(`${API_BASE}/api/admin/embeddings/${embeddingId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      setEmbeddings(embeddings.filter(e => e.id !== embeddingId));
+      alert("Embedding deleted successfully");
+      fetchAdminData(token);
+    } catch (error) {
+      console.error("Failed to delete embedding:", error);
+      alert("Failed to delete embedding: " + (error.response?.data?.error || error.message));
+    }
+  };
+
   // Filter users based on search and role
   const filteredUsers = users.filter(user => {
     const matchesSearch = !userSearch || 
@@ -139,6 +192,26 @@ const AdminDashboard = () => {
     }
     
     return matchesSearch && matchesType;
+  });
+
+  // Filter chunks based on search and document
+  const filteredChunks = chunks.filter(chunk => {
+    const matchesSearch = !chunkSearch ||
+      chunk.id?.toString().includes(chunkSearch) ||
+      chunk.chunk_text?.toLowerCase().includes(chunkSearch.toLowerCase());
+    
+    const matchesDoc = chunkDocFilter === "all" || chunk.document_id?.toString() === chunkDocFilter;
+    
+    return matchesSearch && matchesDoc;
+  });
+
+  // Filter embeddings based on search
+  const filteredEmbeddings = embeddings.filter(embedding => {
+    const matchesSearch = !embeddingSearch ||
+      embedding.id?.toString().includes(embeddingSearch) ||
+      embedding.chunk_id?.toString().includes(embeddingSearch);
+    
+    return matchesSearch;
   });
 
   const logout = () => {
@@ -203,6 +276,9 @@ const AdminDashboard = () => {
     );
   }
 
+  // Get unique document IDs for chunk filter
+  const uniqueDocIds = [...new Set(chunks.map(c => c.document_id))].filter(Boolean);
+
   return (
     <div className="admin-dashboard">
       <div className="grok-bg"></div>
@@ -224,6 +300,8 @@ const AdminDashboard = () => {
           <button className={activeTab === "analytics" ? "active" : ""} onClick={() => setActiveTab("analytics")}>Analytics</button>
           <button className={activeTab === "users" ? "active" : ""} onClick={() => setActiveTab("users")}>Users</button>
           <button className={activeTab === "documents" ? "active" : ""} onClick={() => setActiveTab("documents")}>Documents</button>
+          <button className={activeTab === "chunks" ? "active" : ""} onClick={() => setActiveTab("chunks")}>Chunks</button>
+          <button className={activeTab === "embeddings" ? "active" : ""} onClick={() => setActiveTab("embeddings")}>Embeddings</button>
         </div>
 
         {activeTab === "overview" && (
@@ -508,6 +586,147 @@ const AdminDashboard = () => {
             </div>
           </div>
         )}
+
+        {activeTab === "chunks" && (
+          <div className="data-table">
+            <div className="table-header">
+              <h2>All Chunks ({filteredChunks.length})</h2>
+              <div className="table-controls">
+                <input
+                  type="text"
+                  placeholder="Search chunks by ID or text..."
+                  value={chunkSearch}
+                  onChange={(e) => setChunkSearch(e.target.value)}
+                  className="search-input"
+                />
+                <select
+                  value={chunkDocFilter}
+                  onChange={(e) => setChunkDocFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">All Documents</option>
+                  {uniqueDocIds.map(docId => (
+                    <option key={docId} value={docId}>Doc ID: {docId}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Chunk ID</th>
+                    <th>Document ID</th>
+                    <th>Chunk Index</th>
+                    <th>Chunk Text</th>
+                    <th>Created At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredChunks.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
+                        No chunks found matching your search criteria
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredChunks.map((chunk) => (
+                      <tr key={chunk.id}>
+                        <td>{chunk.id}</td>
+                        <td>{chunk.document_id || "N/A"}</td>
+                        <td>{chunk.chunk_index !== undefined ? chunk.chunk_index : "N/A"}</td>
+                        <td className="preview-cell" title={chunk.chunk_text}>
+                          {chunk.chunk_text?.substring(0, 100)}...
+                        </td>
+                        <td>{chunk.created_at ? new Date(chunk.created_at).toLocaleString() : "N/A"}</td>
+                        <td>
+                          <button
+                            onClick={() => handleDeleteChunk(chunk.id)}
+                            className="action-btn delete-btn-small"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "embeddings" && (
+          <div className="data-table">
+            <div className="table-header">
+              <h2>All Embeddings ({filteredEmbeddings.length})</h2>
+              <div className="table-controls">
+                <input
+                  type="text"
+                  placeholder="Search embeddings by ID or chunk ID..."
+                  value={embeddingSearch}
+                  onChange={(e) => setEmbeddingSearch(e.target.value)}
+                  className="search-input"
+                />
+              </div>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Embedding ID</th>
+                    <th>Chunk ID</th>
+                    <th>Vector Dimensions</th>
+                    <th>Vector Preview</th>
+                    <th>Created At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEmbeddings.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
+                        No embeddings found matching your search criteria
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredEmbeddings.map((embedding) => {
+                      const vectorArray = embedding.embedding_vector ? 
+                        (typeof embedding.embedding_vector === 'string' ? 
+                          JSON.parse(embedding.embedding_vector) : 
+                          embedding.embedding_vector) : [];
+                      const vectorLength = Array.isArray(vectorArray) ? vectorArray.length : 0;
+                      const vectorPreview = Array.isArray(vectorArray) && vectorArray.length > 0 ?
+                        `[${vectorArray.slice(0, 3).map(v => v.toFixed(4)).join(', ')}...]` : 
+                        "N/A";
+                      
+                      return (
+                        <tr key={embedding.id}>
+                          <td>{embedding.id}</td>
+                          <td>{embedding.chunk_id || "N/A"}</td>
+                          <td>{vectorLength}</td>
+                          <td className="preview-cell" title={`Vector with ${vectorLength} dimensions`}>
+                            {vectorPreview}
+                          </td>
+                          <td>{embedding.created_at ? new Date(embedding.created_at).toLocaleString() : "N/A"}</td>
+                          <td>
+                            <button
+                              onClick={() => handleDeleteEmbedding(embedding.id)}
+                              className="action-btn delete-btn-small"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -782,6 +1001,9 @@ const AdminDashboard = () => {
           .charts-grid {
             grid-template-columns: 1fr;
           }
+        }
+        .table-wrapper {
+          overflow-x: auto;
         }
       `}</style>
     </div>
