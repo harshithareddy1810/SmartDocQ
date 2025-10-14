@@ -45,6 +45,17 @@ const UploadPage = () => {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       const file = files[0];
+      
+      // Validate file type
+      const allowedExtensions = ['.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.webp'];
+      const fileName = file.name.toLowerCase();
+      const isAllowed = allowedExtensions.some(ext => fileName.endsWith(ext));
+      
+      if (!isAllowed) {
+        alert('Unsupported file type. Please upload: PDF, DOCX, TXT, PNG, JPG, JPEG, TIFF, BMP, or WEBP files.');
+        return;
+      }
+      
       setFileName(file.name);
       uploadFile(file);
     }
@@ -213,7 +224,14 @@ const UploadPage = () => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => pdfInputRef.current.click()}
+            onClick={() => {
+              // Open file picker with all supported types instead of just PDF
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.pdf,.docx,.txt,.png,.jpg,.jpeg,.tiff,.bmp,.webp';
+              input.onchange = handleFileUpload;
+              input.click();
+            }}
           >
             {isUploading ? (
               <div className="upload-progress">
@@ -314,8 +332,14 @@ const UploadPage = () => {
         </div>
       </div>
 
-      {/* Hidden inputs */}
-      <input type="file" ref={pdfInputRef} style={{ display: "none" }} accept=".pdf" onChange={handleFileUpload} />
+      {/* Hidden inputs - update PDF input to accept all types for drag-drop fallback */}
+      <input 
+        type="file" 
+        ref={pdfInputRef} 
+        style={{ display: "none" }} 
+        accept=".pdf" 
+        onChange={handleFileUpload} 
+      />
       <input type="file" ref={wordInputRef} style={{ display: "none" }} accept=".docx" onChange={handleFileUpload} />
       <input type="file" ref={textInputRef} style={{ display: "none" }} accept=".txt" onChange={handleFileUpload} />
       <input type="file" ref={imageInputRef} style={{ display: "none" }} accept=".png,.jpg,.jpeg,.tiff,.bmp,.webp" onChange={handleFileUpload} />

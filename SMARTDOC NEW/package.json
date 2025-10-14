@@ -23,6 +23,7 @@
     "react-pdf": "^6.2.2",
     "react-router-dom": "^7.9.3",
     "react-speech-recognition": "^4.0.1",
+    "recharts": "^2.15.4",
     "tesseract.js": "^6.0.1"
   },
   "devDependencies": {

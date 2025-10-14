@@ -219,10 +219,11 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = (token) => {
-    localStorage.setItem("jwt_token", token);
-    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    localStorage.setItem('jwt_token', token);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     setIsAuthenticated(true);
-    // scheduleSilentRefresh(token); // disabled
+    // startRefreshTimer();
+    // Remove automatic navigation - let calling component handle it
   };
 
   const logout = () => {

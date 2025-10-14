@@ -9,6 +9,7 @@ import UploadPage from "./pages/UploadPage";
 import DocumentsListPage from "./pages/DocumentsListPage";
 import DocumentQAPage from "./pages/DocumentQAPage";
 import AppHeader from "./components/AppHeader";
+import AdminDashboard from "./pages/AdminDashboard";
 
 import { useAuth } from "./context/AuthContext";
 
@@ -35,7 +36,8 @@ function App() {
     location.pathname === "/signup" ||
     location.pathname.startsWith("/qa") ||
     location.pathname.startsWith("/upload") ||
-    location.pathname.startsWith("/documents");
+    location.pathname.startsWith("/documents") ||
+    location.pathname.startsWith("/admin");
 
   return (
     <>
@@ -44,6 +46,15 @@ function App() {
         <Route path="/" element={<WelcomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth>
+              <AdminDashboard />
+            </RequireAuth>
+          }
+        />
 
         <Route
           path="/upload"

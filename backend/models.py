@@ -1,4 +1,3 @@
-
 # from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, func
 # from sqlalchemy.orm import relationship, DeclarativeBase
 
@@ -69,6 +68,7 @@
 
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, func
 from sqlalchemy.orm import relationship, DeclarativeBase
+from datetime import datetime
 
 class Base(DeclarativeBase):
     pass
@@ -76,10 +76,11 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    email = Column(String, unique=True, index=True)
+    name = Column(String, nullable=True)
+    email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=True)
-    role = Column(String, default='student')
+    role = Column(String, default="student")  # Add role field: "student" or "admin"
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationship to documents
     documents = relationship("Document", back_populates="owner")

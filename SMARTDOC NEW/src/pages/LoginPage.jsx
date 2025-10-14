@@ -22,10 +22,26 @@ const LoginPage = () => {
     try {
       const res = await axios.post(`${API_BASE}/api/login`, { email, password });
       const token = res.data?.token;
+      const role = res.data?.role;
+      
+      console.log("Login response:", { token: token?.substring(0, 20) + "...", role });
+      
       if (!token) throw new Error("No token returned");
-      login(token);            // <— use context so axios headers + refresh timer are set
-      navigate("/upload");
+      
+      // Store role in localStorage before login
+      localStorage.setItem("user_role", role || "student");
+      
+      login(token);
+      
+      // Navigate based on role
+      if (role === "admin") {
+        console.log("Navigating to admin dashboard");
+        navigate('/admin');
+      } else {
+        navigate('/upload');
+      }
     } catch (err) {
+      console.error("Login error:", err);
       setError(err.response?.data?.message || "Login failed. Please try again.");
     }
   };

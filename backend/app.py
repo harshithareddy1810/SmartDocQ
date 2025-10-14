@@ -153,16 +153,40 @@ def token_required(f):
         db: Session | None = None
         try:
             data = jwt_decode(token, app.config["SECRET_KEY"])
-            db = database.SessionLocal()
-            current_user = db.query(models.User).filter_by(email=data["email"]).first()
-            if not current_user:
-                return jsonify({"message": "User not found!"}), 401
+            email = data.get("email")
+            role = data.get("role", "student")
+            
+            # For admin tokens, create a mock user object
+            if role == "admin":
+                class AdminUser:
+                    def __init__(self):
+                        self.email = email
+                        self.role = "admin"
+                        self.id = None
+                        self.name = "Administrator"
+                current_user = AdminUser()
+            else:
+                db = database.SessionLocal()
+                current_user = db.query(models.User).filter_by(email=email).first()
+                if not current_user:
+                    return jsonify({"message": "User not found!"}), 401
         except Exception as e:
+            app.logger.error(f"Token validation failed: {str(e)}")
             return jsonify({"message": "Token is invalid!", "error": str(e)}), 401
         finally:
             if db is not None:
                 db.close()
 
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(current_user, *args, **kwargs):
+        user_role = getattr(current_user, "role", "student")
+        app.logger.info(f"Admin check - User role: {user_role}")
+        if user_role != "admin":
+            return jsonify({"message": "Admin access required!"}), 403
         return f(current_user, *args, **kwargs)
     return decorated
 
@@ -272,13 +296,28 @@ def login():
     try:
         email = (data.get("email") or "").strip().lower()
         password = data.get("password") or ""
+        
+        # Debug logging
+        app.logger.info(f"Login attempt - Email: {email}")
+        
+        # Check for fixed admin credentials (case-insensitive email)
+        if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+            app.logger.info(f"Admin login successful for: {email}")
+            # Return admin token with role
+            token = jwt_encode(
+                {"email": email, "role": "admin", "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS)},
+                app.config["SECRET_KEY"],
+            )
+            return jsonify({"token": token, "role": "admin"})
+        
         user = db.query(models.User).filter(models.User.email == email).first()
 
         if not user or not user.hashed_password or not bcrypt.check_password_hash(user.hashed_password, password):
+            app.logger.warning(f"Invalid login attempt for: {email}")
             return jsonify({"message": "Invalid credentials!"}), 401
 
         token = _issue_token_for(user.email)
-        return jsonify({"token": token})
+        return jsonify({"token": token, "role": getattr(user, "role", "student")})
     finally:
         db.close()
 
@@ -603,6 +642,192 @@ def get_feedback_summary(current_user, message_id: int):
             "message_id": message_id,
             "counts": {"up": up_count, "down": down_count}
         }), 200
+    finally:
+        db.close()
+
+# =========================
+# Admin Routes
+# =========================
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@smartdocq.com").lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin@123")
+
+# Add logging to verify credentials are loaded
+app.logger.info(f"Admin credentials loaded - Email: {ADMIN_EMAIL}")
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(current_user, *args, **kwargs):
+        user_role = getattr(current_user, "role", "student")
+        app.logger.info(f"Admin check - User role: {user_role}")
+        if user_role != "admin":
+            return jsonify({"message": "Admin access required!"}), 403
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+@app.get("/api/admin/users")
+@token_required
+@admin_required
+def get_all_users(current_user):
+    """Admin-only: Get all users"""
+    db: Session = next(get_db())
+    try:
+        users = db.query(models.User).order_by(models.User.created_at.desc()).all()
+        return jsonify([
+            {
+                "id": u.id,
+                "name": u.name,
+                "email": u.email,
+                "role": getattr(u, "role", "student"),
+                "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+            } for u in users
+        ])
+    finally:
+        db.close()
+
+@app.get("/api/admin/documents")
+@token_required
+@admin_required
+def get_all_documents_admin(current_user):
+    """Admin-only: Get all documents from all users"""
+    db: Session = next(get_db())
+    try:
+        docs = db.query(models.Document).order_by(models.Document.created_at.desc()).all()
+        return jsonify([
+            {
+                "id": d.id,
+                "filename": d.filename,
+                "user_id": d.user_id,
+                "created_at": d.created_at.isoformat() if getattr(d, "created_at", None) else None,
+                "text_preview": (d.text or "")[:200],
+            } for d in docs
+        ])
+    finally:
+        db.close()
+
+@app.get("/api/admin/stats")
+@token_required
+@admin_required
+def get_admin_stats(current_user):
+    """Admin-only: Get system statistics with analytics data"""
+    db: Session = next(get_db())
+    try:
+        total_users = db.query(func.count(models.User.id)).scalar() or 0
+        total_docs = db.query(func.count(models.Document.id)).scalar() or 0
+        total_messages = db.query(func.count(models.Message.id)).scalar() or 0
+        total_feedback = db.query(func.count(models.Feedback.id)).scalar() or 0
+        
+        # Feedback breakdown
+        positive_feedback = db.query(func.count(models.Feedback.id)).filter(
+            models.Feedback.rating == "up"
+        ).scalar() or 0
+        negative_feedback = db.query(func.count(models.Feedback.id)).filter(
+            models.Feedback.rating == "down"
+        ).scalar() or 0
+        
+        # User roles breakdown
+        admin_users = db.query(func.count(models.User.id)).filter(
+            models.User.role == "admin"
+        ).scalar() or 0
+        student_users = total_users - admin_users
+        
+        # Document types breakdown (count by file extension)
+        from sqlalchemy import case
+        doc_types = db.query(
+            case(
+                (models.Document.filename.like('%.pdf'), 'PDF'),
+                (models.Document.filename.like('%.docx'), 'Word'),
+                (models.Document.filename.like('%.txt'), 'Text'),
+                (models.Document.filename.like('%.png'), 'Image'),
+                (models.Document.filename.like('%.jpg'), 'Image'),
+                (models.Document.filename.like('%.jpeg'), 'Image'),
+                else_='Other'
+            ).label('type'),
+            func.count(models.Document.id).label('count')
+        ).group_by('type').all()
+        
+        doc_type_stats = {dtype: count for dtype, count in doc_types}
+        
+        # Activity over last 7 days
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        activity_data = []
+        for i in range(6, -1, -1):
+            date = today - timedelta(days=i)
+            date_start = datetime.combine(date, datetime.min.time())
+            date_end = datetime.combine(date, datetime.max.time())
+            
+            docs_count = db.query(func.count(models.Document.id)).filter(
+                models.Document.created_at >= date_start,
+                models.Document.created_at <= date_end
+            ).scalar() or 0
+            
+            messages_count = db.query(func.count(models.Message.id)).filter(
+                models.Message.created_at >= date_start,
+                models.Message.created_at <= date_end
+            ).scalar() or 0
+            
+            activity_data.append({
+                "date": date.strftime("%b %d"),
+                "documents": docs_count,
+                "messages": messages_count
+            })
+        
+        return jsonify({
+            "total_users": total_users,
+            "total_documents": total_docs,
+            "total_messages": total_messages,
+            "total_feedback": total_feedback,
+            "feedback_breakdown": {
+                "positive": positive_feedback,
+                "negative": negative_feedback
+            },
+            "user_roles": {
+                "admin": admin_users,
+                "student": student_users
+            },
+            "document_types": doc_type_stats,
+            "activity_timeline": activity_data
+        })
+    finally:
+        db.close()
+
+@app.delete("/api/admin/users/<int:user_id>")
+@token_required
+@admin_required
+def delete_user_admin(current_user, user_id: int):
+    """Admin-only: Delete a user and all their documents"""
+    db: Session = next(get_db())
+    try:
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # Prevent deleting admin users
+        if getattr(user, "role", "student") == "admin":
+            return jsonify({"error": "Cannot delete admin users"}), 403
+        
+        # Delete user's documents first (cascade should handle this, but explicit is better)
+        user_docs = db.query(models.Document).filter(models.Document.user_id == user_id).all()
+        for doc in user_docs:
+            try:
+                # Delete physical file if exists
+                if doc.filename:
+                    path = os.path.join(app.config["UPLOAD_FOLDER"], doc.filename)
+                    if os.path.exists(path):
+                        os.remove(path)
+            except Exception as e:
+                app.logger.warning(f"Failed to delete file for doc {doc.id}: {e}")
+            db.delete(doc)
+        
+        # Delete the user
+        db.delete(user)
+        db.commit()
+        
+        return jsonify({"message": f"User {user.email} and their documents deleted successfully"}), 200
+    except Exception as e:
+        db.rollback()
+        app.logger.exception("Error deleting user")
+        return jsonify({"error": f"Failed to delete user: {str(e)}"}), 500
     finally:
         db.close()
 
