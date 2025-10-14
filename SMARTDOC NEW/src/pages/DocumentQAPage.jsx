@@ -249,18 +249,15 @@ const DocumentQAPage = () => {
   const navigate = useNavigate();
   const { docId } = useParams();
 
-
   // Document state
   const [doc, setDoc] = useState(null);
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
 
-
   // Chat state
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [conversation, setConversation] = useState([]); // { role, content, time, message_id? }
   const [isLoading, setIsLoading] = useState(false);
-
 
   // Voice
   const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
@@ -269,9 +266,12 @@ const DocumentQAPage = () => {
   }, [transcript]);
   const [isStandardMicActive, setIsStandardMicActive] = useState(false);
 
-  // Google Assistant state
-  const [isGoogleAssistantActive, setIsGoogleAssistantActive] = useState(false);
-  const [googleAssistantListening, setGoogleAssistantListening] = useState(false);
+  // General Assistant popup state
+  const [showAssistantPopup, setShowAssistantPopup] = useState(false);
+  const [assistantQuestion, setAssistantQuestion] = useState('');
+  const [assistantConversation, setAssistantConversation] = useState([]);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
 
   const tokenGuard = useCallback(() => {
@@ -386,105 +386,53 @@ const DocumentQAPage = () => {
     alert("Copied to clipboard!");
   }, []);
 
-  // Google Assistant functionality
-  const handleGoogleAssistantClick = useCallback(async () => {
-    if (!browserSupportsSpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
-      return;
-    }
-
-    if (googleAssistantListening) {
-      // Stop listening
-      SpeechRecognition.stopListening();
-      setGoogleAssistantListening(false);
-      setIsGoogleAssistantActive(false);
-    } else {
-      // Start listening
-      setIsGoogleAssistantActive(true);
-      setGoogleAssistantListening(true);
-      setIsStandardMicActive(false);
-      
-      // Start speech recognition
-      resetTranscript();
-      SpeechRecognition.startListening({
-        continuous: true,
-        interimResults: true,
-        language: 'en-US',
-      });
-    }
-  }, [browserSupportsSpeechRecognition, googleAssistantListening]);
-
-  // Standard mic button behavior is handled inline on the button now
-
-  // Handle Google Assistant speech recognition
-  useEffect(() => {
-    if (isGoogleAssistantActive && transcript && !listening) {
-      // Speech recognition completed, process the question
-      setCurrentQuestion(transcript);
-      setGoogleAssistantListening(false);
-      setIsGoogleAssistantActive(false);
-      
-      // Automatically submit the question
-      setTimeout(() => {
-        if (transcript.trim()) {
-          handleAskQuestion({ preventDefault: () => {} });
-        }
-      }, 500);
-    }
-  }, [transcript, listening, isGoogleAssistantActive, handleAskQuestion]);
-
-  // Auto-submit for standard mic capture
-  useEffect(() => {
-    if (isStandardMicActive && transcript && !listening) {
-      setCurrentQuestion(transcript);
-      setIsStandardMicActive(false);
-      setTimeout(() => {
-        if (transcript.trim()) {
-          handleAskQuestion({ preventDefault: () => {} });
-        }
-      }, 300);
-    }
-  }, [isStandardMicActive, transcript, listening, handleAskQuestion]);
-
-  // If recognition ends immediately, auto-retry while standard mic is active
-  useEffect(() => {
-    if (isStandardMicActive && !listening && browserSupportsSpeechRecognition) {
-      // Small delay prevents tight loops if permission is pending/denied
-      const id = setTimeout(() => {
-        SpeechRecognition.startListening({
-          continuous: true,
-          interimResults: true,
-          language: 'en-US',
-        });
-      }, 250);
-      return () => clearTimeout(id);
-    }
-  }, [isStandardMicActive, listening, browserSupportsSpeechRecognition]);
-
-  // Text-to-speech for Google Assistant responses
-  const speakResponse = useCallback((text) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.volume = 0.8;
-      speechSynthesis.speak(utterance);
-    }
+  // Toggle assistant popup
+  const handleAssistantClick = useCallback(() => {
+    setShowAssistantPopup(prev => !prev);
   }, []);
 
-  // Auto-speak the latest assistant response
-  useEffect(() => {
-    if (conversation.length > 0) {
-      const lastMessage = conversation[conversation.length - 1];
-      if (lastMessage.role === 'assistant' && isGoogleAssistantActive) {
-        // Speak the response after a short delay
-        setTimeout(() => {
-          speakResponse(lastMessage.content);
-        }, 1000);
-      }
-    }
-  }, [conversation, isGoogleAssistantActive, speakResponse]);
 
+  // Handle general assistant question (no document context)
+  const handleAssistantAsk = useCallback(async (e) => {
+    e.preventDefault();
+    if (!assistantQuestion.trim() || assistantLoading) return;
+    const token = tokenGuard();
+    if (!token) return;
+
+    const newQ = assistantQuestion;
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    setAssistantConversation(prev => [...prev, { role: 'user', content: newQ, time: timestamp }]);
+    setAssistantQuestion('');
+    setAssistantLoading(true);
+
+    try {
+      const res = await axios.post(
+        `${API_BASE}/api/general-ask`,
+        { question: newQ },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
+
+      const answer = res?.data?.answer || 'No response';
+      const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setAssistantConversation(prev => [...prev, { role: 'assistant', content: answer, time: aiTime }]);
+    } catch (err) {
+      console.error('General assistant error:', err);
+      setAssistantConversation(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } finally {
+      setAssistantLoading(false);
+    }
+  }, [assistantQuestion, assistantLoading, tokenGuard]);
+
+
+  const handleCopyAssistant = useCallback((text) => {
+    navigator.clipboard.writeText(text);
+    alert("Copied to clipboard!");
+  }, []);
 
   return (
     <div className="qa-page-layout" style={{ position: 'relative' }}>
@@ -553,46 +501,6 @@ const DocumentQAPage = () => {
                 </div>
               </div>
             )}
-
-            {googleAssistantListening && (
-              <div className="chat-message assistant">
-                <div className="avatar assistant-avatar">🎤</div>
-                <div className="message-content">
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px',
-                    color: '#4285f4',
-                    fontStyle: 'italic'
-                  }}>
-                    <div className="typing-indicator">
-                      <span></span><span></span><span></span>
-                    </div>
-                    {transcript ? `"${transcript}"` : 'Google Assistant is listening...'}
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* Standard mic listening preview */}
-            {isStandardMicActive && listening && (
-              <div className="chat-message assistant">
-                <div className="avatar assistant-avatar">🎤</div>
-                <div className="message-content">
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px',
-                    color: '#93c5fd',
-                    fontStyle: 'italic'
-                  }}>
-                    <div className="typing-indicator">
-                      <span></span><span></span><span></span>
-                    </div>
-                    {transcript ? `"${transcript}"` : 'Listening...'}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
 
@@ -612,8 +520,6 @@ const DocumentQAPage = () => {
                     SpeechRecognition.stopListening();
                     setIsStandardMicActive(false);
                   } else {
-                    setIsGoogleAssistantActive(false);
-                    setGoogleAssistantListening(false);
                     setIsStandardMicActive(true);
                     resetTranscript();
                       SpeechRecognition.startListening({
@@ -630,51 +536,225 @@ const DocumentQAPage = () => {
                 {listening ? <FiMicOff /> : <FiMic />}
               </button>
             )}
-            {/* Google Assistant button added here */}
             <button
               type="button"
               className="google-assistant-btn"
-              title={googleAssistantListening ? "Stop Google Assistant" : "Start Google Assistant"}
-              onClick={handleGoogleAssistantClick}
+              title="Open AI Assistant"
+              onClick={handleAssistantClick}
               disabled={isLoading}
               style={{
-                background: googleAssistantListening ? '#4285f4' : 'transparent',
-                border: googleAssistantListening ? '2px solid #4285f4' : '2px solid transparent',
+                background: showAssistantPopup ? '#4285f4' : 'transparent',
+                border: showAssistantPopup ? '2px solid #4285f4' : '2px solid transparent',
                 borderRadius: '50%',
                 cursor: 'pointer',
                 marginRight: 8,
                 alignSelf: 'center',
-                padding: '4px',
-                transition: 'all 0.3s ease',
+                padding: 8,
+                width: 44,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.18s ease',
                 opacity: isLoading ? 0.6 : 1,
               }}
             >
-                <img
-                  src="/Google_assistant_logo.svg"
-                  alt="Google Assistant"
-                style={{ 
-                  width: 24, 
-                  height: 24,
-                  filter: googleAssistantListening ? 'brightness(0) invert(1)' : 'none'
-                }}
-              />
-            </button>
+                {/* inline project logo SVG (larger; transforms removed so it scales to the button) */}
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 256 256"
+                  xmlns="http://www.w3.org/2000/svg"
+                  role="img"
+                  aria-label="SmartDocQ logo"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    display: 'block',
+                    filter: showAssistantPopup ? 'brightness(0) invert(1)' : 'none'
+                  }}
+                >
+                  <defs>
+                    <linearGradient id="miniG_assist" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#60a5fa" />
+                      <stop offset="100%" stopColor="#22d3ee" />
+                    </linearGradient>
+                  </defs>
+                  {/* head */}
+                  <circle cx="128" cy="72" r="44" fill="#bcd7ff" />
+                  {/* visor */}
+                  <rect x="84" y="52" width="88" height="40" rx="20" fill="#0b1220" />
+                  {/* eyes */}
+                  <circle cx="108" cy="72" r="6" fill="#60a5fa" />
+                  <circle cx="148" cy="72" r="6" fill="#60a5fa" />
+                  {/* body */}
+                  <rect x="96" y="120" width="64" height="42" rx="12" fill="#bcd7ff" />
+                  <rect x="112" y="130" width="32" height="22" rx="10" fill="url(#miniG_assist)" />
+                </svg>
+             </button>
             <button type="submit" className="qa-send-btn" disabled={isLoading}>➤</button>
           </form>
         </div>
       </main>
 
+      {/* Assistant Popup Chat */}
+      {showAssistantPopup && (
+        <div className={`assistant-popup ${isMinimized ? 'minimized' : ''}`}>
+          <div className="assistant-popup-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <svg width="24" height="24" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="popupG" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#60a5fa" />
+                    <stop offset="100%" stopColor="#22d3ee" />
+                  </linearGradient>
+                </defs>
+                <circle cx="128" cy="72" r="44" fill="#bcd7ff" />
+                <rect x="84" y="52" width="88" height="40" rx="20" fill="#0b1220" />
+                <circle cx="108" cy="72" r="6" fill="#60a5fa" />
+                <circle cx="148" cy="72" r="6" fill="#60a5fa" />
+                <rect x="96" y="120" width="64" height="42" rx="12" fill="#bcd7ff" />
+                <rect x="112" y="130" width="32" height="22" rx="10" fill="url(#popupG)" />
+              </svg>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>AI Assistant</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>Ask me anything</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setIsMinimized(!isMinimized)}
+                className="popup-control-btn"
+                title={isMinimized ? "Expand" : "Minimize"}
+              >
+                {isMinimized ? '□' : '−'}
+              </button>
+              <button
+                onClick={() => setShowAssistantPopup(false)}
+                className="popup-control-btn"
+                title="Close"
+              >×</button>
+            </div>
+          </div>
+
+          {!isMinimized && (
+            <>
+              <div className="assistant-popup-body">
+                {assistantConversation.length === 0 ? (
+                  <div className="assistant-welcome">
+                    <div className="welcome-icon">
+                      <svg width="48" height="48" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                          <linearGradient id="welcomeG" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stopColor="#60a5fa" />
+                            <stop offset="100%" stopColor="#22d3ee" />
+                          </linearGradient>
+                        </defs>
+                        <circle cx="128" cy="72" r="44" fill="#bcd7ff" />
+                        <rect x="84" y="52" width="88" height="40" rx="20" fill="#0b1220" />
+                        <circle cx="108" cy="72" r="6" fill="#60a5fa" />
+                        <circle cx="148" cy="72" r="6" fill="#60a5fa" />
+                        <rect x="96" y="120" width="64" height="42" rx="12" fill="#bcd7ff" />
+                        <rect x="112" y="130" width="32" height="22" rx="10" fill="url(#welcomeG)" />
+                      </svg>
+                    </div>
+                    <h3 style={{ color: '#e5e7eb', fontSize: 16, fontWeight: 600, marginTop: 16 }}>👋 Hi! I'm your AI Assistant</h3>
+                    <p style={{ fontSize: 13, marginTop: 8, color: '#94a3b8', lineHeight: 1.5 }}>
+                      I can help with general questions, explanations, coding problems, and more!
+                    </p>
+                    <div className="suggestion-chips">
+                      <button 
+                        className="chip"
+                        onClick={() => setAssistantQuestion("What is React?")}
+                      >
+                        💡 What is React?
+                      </button>
+                      <button 
+                        className="chip"
+                        onClick={() => setAssistantQuestion("Explain machine learning")}
+                      >
+                        🤖 Explain ML
+                      </button>
+                      <button 
+                        className="chip"
+                        onClick={() => setAssistantQuestion("Write a Python function")}
+                      >
+                        🐍 Python help
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  assistantConversation.map((msg, idx) => (
+                    <div key={idx} className={`popup-chat-message ${msg.role}`}>
+                      <div className={`popup-avatar ${msg.role}-avatar`}>
+                        {msg.role === 'user' ? '👤' : '🤖'}
+                      </div>
+                      <div className="popup-message-wrapper">
+                        <div className="popup-message-content">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          {msg.role === 'assistant' && (
+                            <button 
+                              onClick={() => handleCopyAssistant(msg.content)} 
+                              className="popup-copy-btn" 
+                              title="Copy"
+                            >
+                              <FiCopy />
+                            </button>
+                          )}
+                        </div>
+                        <div className="popup-timestamp">{msg.time}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                {assistantLoading && (
+                  <div className="popup-chat-message assistant">
+                    <div className="popup-avatar assistant-avatar">🤖</div>
+                    <div className="popup-message-wrapper">
+                      <div className="popup-message-content">
+                        <div className="typing-indicator">
+                          <span></span><span></span><span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <form className="assistant-popup-input" onSubmit={handleAssistantAsk}>
+                <div className="popup-input-wrapper">
+                  <input
+                    type="text"
+                    placeholder="Ask me anything..."
+                    value={assistantQuestion}
+                    onChange={(e) => setAssistantQuestion(e.target.value)}
+                    disabled={assistantLoading}
+                    autoFocus
+                  />
+                  <button 
+                    type="submit" 
+                    disabled={assistantLoading || !assistantQuestion.trim()}
+                    className="popup-send-btn"
+                  >
+                    {assistantLoading ? '⏳' : '➤'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Scoped styling for professional dark-glass chat UI */}
       <style>{`
         .qa-page-layout { min-height: 100vh; display:flex; position:relative; background:#0b0f14; }
         .qa-container { width:100%; display:flex; gap: 28px; padding: 60px 70px; position:relative; z-index:1; }
-        /* Neat glass containers matching site theme */
-  .qa-left { flex: 1; overflow: auto; display:flex; flex-direction: column; background: rgba(15,23,42,0.80); border:1px solid rgba(148,163,184,0.20); border-radius: 18px; backdrop-filter: blur(8px); box-shadow: 0 16px 36px rgba(0,0,0,0.35); padding: 14px; }
+        .qa-left { flex: 1; overflow: auto; display:flex; flex-direction: column; background: rgba(15,23,42,0.80); border:1px solid rgba(148,163,184,0.20); border-radius: 18px; backdrop-filter: blur(8px); box-shadow: 0 16px 36px rgba(0,0,0,0.35); padding: 14px; }
         .qa-right { width: 42%; display:flex; flex-direction: column; background: rgba(15,23,42,0.80); border:1px solid rgba(148,163,184,0.20); border-radius: 18px; backdrop-filter: blur(8px); box-shadow: 0 16px 36px rgba(0,0,0,0.35); padding: 16px; }
         .qa-history { flex:1; overflow-y:auto; padding: 8px; display:flex; flex-direction: column; gap: 14px; }
         .chat-message { display:flex; gap:10px; max-width: 92%; }
         .chat-message.user { align-self: flex-end; flex-direction: row-reverse; }
-        .avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; }
+        .avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; font-size: 11px; }
         .avatar.user-avatar { background:#4f46e5; color:#fff; }
         .avatar.assistant-avatar { background:#f3f4f6; color:#374151; }
         .message-content { position:relative; padding: 12px 16px; border-radius:14px; background: rgba(11,15,20,0.78); color:#e5e7eb; border:1px solid rgba(148,163,184,0.22); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
@@ -690,22 +770,269 @@ const DocumentQAPage = () => {
         .pdf-viewer { padding: 0; min-height: 0; }
         .pdf-scroll { overflow-y: auto; padding-right: 8px; max-height: calc(100vh - 160px); }
         .pdf-page { display:flex; justify-content:center; margin-bottom: 18px; }
-  /* DOCX preview styling (mammoth output) */
-  .docx-preview { color: #e5e7eb; }
-  .docx-preview p { color: #e5e7eb; margin-bottom: 0.9rem; line-height: 1.6; }
-  .docx-preview h1, .docx-preview h2, .docx-preview h3 { color: #fff; margin: 0.6rem 0; }
-  .docx-preview a { color: #60a5fa; text-decoration: underline; }
-  .docx-preview ul, .docx-preview ol { margin-left: 1.2rem; margin-bottom: 0.9rem; }
-  .docx-preview img { max-width: 100%; height: auto; display:block; margin: 12px 0; }
+        .docx-preview { color: #e5e7eb; }
+        .docx-preview p { color: #e5e7eb; margin-bottom: 0.9rem; line-height: 1.6; }
+        .docx-preview h1, .docx-preview h2, .docx-preview h3 { color: #fff; margin: 0.6rem 0; }
+        .docx-preview a { color: #60a5fa; text-decoration: underline; }
+        .docx-preview ul, .docx-preview ol { margin-left: 1.2rem; margin-bottom: 0.9rem; }
+        .docx-preview img { max-width: 100%; height: auto; display:block; margin: 12px 0; }
+
+        /* Enhanced Assistant Popup Styles */
+        .assistant-popup {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          width: 420px;
+          max-height: 600px;
+          height: 600px;
+          background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+          border: 1px solid rgba(148, 163, 184, 0.35);
+          border-radius: 16px;
+          backdrop-filter: blur(16px);
+          box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(148, 163, 184, 0.1);
+          display: flex;
+          flex-direction: column;
+          z-index: 9999;
+          animation: slideUp 0.3s ease;
+          transition: height 0.3s ease, max-height 0.3s ease;
+        }
+        .assistant-popup.minimized {
+          height: 60px;
+          max-height: 60px;
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .assistant-popup-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+          color: #e5e7eb;
+          background: rgba(15, 23, 42, 0.6);
+          border-radius: 16px 16px 0 0;
+          flex-shrink: 0;
+        }
+        .popup-control-btn {
+          background: rgba(148, 163, 184, 0.1);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          color: #cbd5e1;
+          cursor: pointer;
+          font-size: 18px;
+          line-height: 1;
+          padding: 6px 10px;
+          border-radius: 8px;
+          transition: all 0.2s;
+        }
+        .popup-control-btn:hover {
+          background: rgba(148, 163, 184, 0.2);
+          border-color: rgba(148, 163, 184, 0.3);
+        }
+        .assistant-popup-body {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .assistant-welcome {
+          text-align: center;
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+        }
+        .welcome-icon {
+          animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+        .suggestion-chips {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 20px;
+          width: 100%;
+        }
+        .chip {
+          background: rgba(148, 163, 184, 0.12);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          color: #cbd5e1;
+          padding: 10px 14px;
+          border-radius: 10px;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-size: 13px;
+          text-align: left;
+        }
+        .chip:hover {
+          background: rgba(148, 163, 184, 0.18);
+          border-color: rgba(148, 163, 184, 0.3);
+          transform: translateX(4px);
+        }
+        .popup-chat-message {
+          display: flex;
+          gap: 10px;
+          max-width: 100%;
+          animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .popup-chat-message.user {
+          align-self: flex-end;
+          flex-direction: row-reverse;
+        }
+        .popup-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          flex-shrink: 0;
+          background: rgba(148, 163, 184, 0.15);
+        }
+        .popup-avatar.user-avatar {
+          background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        }
+        .popup-avatar.assistant-avatar {
+          background: linear-gradient(135deg, #06b6d4, #3b82f6);
+        }
+        .popup-message-wrapper {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+        .popup-message-content {
+          position: relative;
+          padding: 12px 14px;
+          border-radius: 14px;
+          background: rgba(11, 15, 20, 0.85);
+          color: #e5e7eb;
+          border: 1px solid rgba(148, 163, 184, 0.25);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          word-wrap: break-word;
+          line-height: 1.5;
+        }
+        .popup-chat-message.user .popup-message-content {
+          background: linear-gradient(135deg, rgba(79, 70, 229, 0.3), rgba(124, 58, 237, 0.3));
+          border-color: rgba(124, 58, 237, 0.4);
+        }
+        .popup-timestamp {
+          font-size: 0.7rem;
+          color: #6b7280;
+          margin-top: 4px;
+          padding: 0 4px;
+        }
+        .popup-copy-btn {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          color: #cbd5e1;
+          cursor: pointer;
+          border-radius: 6px;
+          padding: 4px;
+          display: flex;
+          opacity: 0;
+          transition: opacity 0.2s, background 0.2s;
+        }
+        .popup-message-content:hover .popup-copy-btn {
+          opacity: 1;
+        }
+        .popup-copy-btn:hover {
+          background: rgba(0, 0, 0, 0.4);
+        }
+        .assistant-popup-input {
+          display: flex;
+          padding: 16px;
+          border-top: 1px solid rgba(148, 163, 184, 0.25);
+          background: rgba(15, 23, 42, 0.6);
+          border-radius: 0 0 16px 16px;
+          flex-shrink: 0;
+        }
+        .popup-input-wrapper {
+          display: flex;
+          gap: 8px;
+          width: 100%;
+          background: rgba(11, 15, 20, 0.8);
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          border-radius: 12px;
+          padding: 4px;
+          transition: border-color 0.2s;
+        }
+        .popup-input-wrapper:focus-within {
+          border-color: #4285f4;
+          box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.1);
+        }
+        .assistant-popup-input input {
+          flex: 1;
+          padding: 10px 14px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          color: #e5e7eb;
+          font-size: 14px;
+        }
+        .assistant-popup-input input:focus {
+          outline: none;
+        }
+        .assistant-popup-input input::placeholder {
+          color: #6b7280;
+        }
+        .popup-send-btn {
+          background: linear-gradient(90deg, #7c3aed, #4f46e5);
+          color: #fff;
+          border: none;
+          padding: 10px 18px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: 600;
+          transition: opacity 0.2s, transform 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 50px;
+        }
+        .popup-send-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .popup-send-btn:hover:not(:disabled) {
+          opacity: 0.9;
+          transform: translateY(-1px);
+        }
+
         @media (max-width: 1024px) {
           .qa-right { width: 100%; }
           .qa-container { flex-direction: column; padding: 40px 22px; gap: 16px; }
+          .assistant-popup {
+            right: 12px;
+            bottom: 12px;
+            width: calc(100vw - 40px);
+            max-width: 420px;
+            height: 500px;
+            max-height: calc(100vh - 100px);
+          }
+          .assistant-popup.minimized {
+            height: 60px;
+          }
         }
       `}</style>
     </div>
   );
 };
 
-
 export default DocumentQAPage;
-// hi

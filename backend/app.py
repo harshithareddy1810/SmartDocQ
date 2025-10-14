@@ -708,6 +708,71 @@ def ask_question(current_user):
     finally:
         db.close()
 
+@app.post("/api/general-ask")
+@token_required
+def general_ask(current_user):
+    """
+    General Q&A endpoint - answers any question without document context.
+    Uses the AI model directly for open-ended queries.
+    """
+    db: Session = next(get_db())
+    data = request.get_json() or {}
+    question = (data.get("question") or "").strip()
+    
+    if not question:
+        return jsonify({"error": "Empty question"}), 400
+
+    force_mock = request.headers.get("x-ai-mock", "").lower() == "true"
+
+    try:
+        # Store user message (optional - for logging)
+        user_msg = models.Message(role="user", content=question, document_id=None)
+        db.add(user_msg)
+        db.commit()
+
+        if force_mock or (not AI_ENABLED) or (genai is None):
+            answer_text = f"(mock) AI disabled. Your question was: {question}"
+            assistant_msg = models.Message(role="assistant", content=answer_text, document_id=None)
+            db.add(assistant_msg)
+            db.commit()
+            return jsonify({"answer": answer_text, "_mode": "mock"}), 200
+
+        # Simple prompt for general knowledge
+        prompt = f"""You are a helpful AI assistant. Answer the following question clearly and concisely.
+If you don't know the answer, say so honestly.
+
+Question: {question}
+
+Answer:"""
+
+        model = genai.GenerativeModel(MODEL_NAME)
+        response = model.generate_content(prompt, generation_config={"temperature": TEMPERATURE})
+        
+        answer = getattr(response, "text", "") or "No response generated."
+        
+        # Store assistant response
+        assistant_msg = models.Message(role="assistant", content=answer, document_id=None)
+        db.add(assistant_msg)
+        db.commit()
+        
+        return jsonify({
+            "answer": answer,
+            "_used_model": MODEL_NAME,
+            "_mode": "live"
+        }), 200
+
+    except Exception as e:
+        db.rollback()
+        app.logger.exception("Error in /api/general-ask")
+        if TESTING_MODE_ON_RATE_LIMIT:
+            return jsonify({
+                "answer": "This is a testing response (rate limit reached).",
+                "_mode": "rate-limit-mock"
+            }), 200
+        return jsonify({"error": f"Failed to get response: {str(e)}"}), 500
+    finally:
+        db.close()
+
 # if __name__ == "__main__":
 #     import jwt  # noqa: F401
 #     app.run(host="0.0.0.0", port=5001, debug=True)
