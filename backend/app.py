@@ -55,10 +55,19 @@ CORS(app, resources={
         "origins": [
             "http://localhost:5173", 
             "http://127.0.0.1:5173",
-            "https://smartdocq-gfzj.onrender.com"  # Add your production frontend
-        ]
+            "https://smartdocq-gfzj.onrender.com"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "expose_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True,
+        "max_age": 3600
     },
-    r"/uploads/*": {"origins": "*"},
+    r"/uploads/*": {
+        "origins": "*",
+        "methods": ["GET"],
+        "allow_headers": ["*"]
+    },
 }, supports_credentials=True)
 
 logging.basicConfig(level=logging.DEBUG)

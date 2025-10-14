@@ -6,7 +6,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import "../../pages.css";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -20,7 +20,15 @@ const LoginPage = () => {
   const handleManualLogin = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post(`${API_BASE}/api/login`, { email, password });
+      const res = await axios.post(`${API_BASE}/api/login`, 
+        { email, password },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          withCredentials: false  // Change to false for production
+        }
+      );
       const token = res.data?.token;
       const role = res.data?.role;
       
