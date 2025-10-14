@@ -314,7 +314,7 @@ def login():
 
         if not user or not user.hashed_password or not bcrypt.check_password_hash(user.hashed_password, password):
             app.logger.warning(f"Invalid login attempt for: {email}")
-            return jsonify({"message": "Invalid credentials!"}), 401
+            return jsonify({"message": "Invalid credentials!"}, 401)
 
         token = _issue_token_for(user.email)
         return jsonify({"token": token, "role": getattr(user, "role", "student")})
@@ -1145,7 +1145,3 @@ def delete_share_link(current_user, share_id: str):
 # if __name__ == "__main__":
 #     import jwt  # noqa: F401
 #     app.run(host="0.0.0.0", port=5001, debug=True)
-if __name__ == "__main__":
-    import jwt  # noqa: F401
-    port = int(os.environ.get("PORT", 8080))  # Render provides this
-    app.run(host="0.0.0.0", port=port, debug=False)
