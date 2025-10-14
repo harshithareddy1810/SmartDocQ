@@ -143,11 +143,3 @@ gunicorn
 
 Flask
 gunicorn
-sqlalchemy
-psycopg2-binary
-google-generativeai
-python-dotenv
-pinecone-client
-chromadb
-flask-bcrypt
-flask-cors
