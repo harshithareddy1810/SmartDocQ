@@ -51,7 +51,13 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # CORS
 CORS(app, resources={
-    r"/api/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]},
+    r"/api/*": {
+        "origins": [
+            "http://localhost:5173", 
+            "http://127.0.0.1:5173",
+            "https://smartdocq-gfzj.onrender.com"  # Add your production frontend
+        ]
+    },
     r"/uploads/*": {"origins": "*"},
 }, supports_credentials=True)
 
@@ -1002,8 +1008,6 @@ Answer:"""
                 "_mode": "rate-limit-mock"
             }), 200
         return jsonify({"error": f"Failed to get response: {str(e)}"}), 500
-    finally:
-        db.close()
 
 # =========================
 # Share Routes
@@ -1148,6 +1152,29 @@ def delete_share_link(current_user, share_id: str):
         return jsonify({"error": f"Failed to disable share: {str(e)}"}), 500
     finally:
         db.close()
+
+# =========================
+# Health Check Routes
+# =========================
+@app.get("/")
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "status": "healthy",
+        "service": "SmartDocQ Backend",
+        "version": "1.0.0",
+        "ai_enabled": AI_ENABLED
+    })
+
+@app.get("/api/health")
+def api_health():
+    """Detailed health check"""
+    return jsonify({
+        "status": "healthy",
+        "database": "connected",
+        "ai_model": MODEL_NAME if AI_ENABLED else "disabled",
+        "frontend_url": os.getenv("FRONTEND_URL", "not set")
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))

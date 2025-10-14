@@ -2,6 +2,37 @@
 
 This project is an intelligent document assistant that allows users to upload documents and ask questions about their content, powered by a React frontend and a Python (Flask) backend with Google's Gemini AI.
 
+## 🌐 Live Demo
+
+- **Frontend**: https://smartdocq-gfzj.onrender.com
+- **Backend API**: https://smartdocq-backend.onrender.com
+
+## 📋 Admin Access
+
+- **Email**: admin@smartdocq.com
+- **Password**: Admin@123
+
+## 🚀 Deployment
+
+### Production Environment Variables
+
+#### Backend (Render)
+```env
+FRONTEND_URL=https://smartdocq-gfzj.onrender.com
+SECRET_KEY=your_production_secret
+GOOGLE_API_KEY=your_google_api_key
+DATABASE_URL=your_postgres_connection_string
+ADMIN_EMAIL=admin@smartdocq.com
+ADMIN_PASSWORD=Admin@123
+AI_ENABLED=true
+```
+
+#### Frontend (Render)
+```env
+VITE_API_BASE=https://smartdocq-backend.onrender.com
+VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
+```
+
 ---
 
 ## API Documentation
@@ -73,4 +104,4 @@ To run this project, you will need to set up the following environment variables
 
 #### **Frontend (`smartdoc-frontend/.env`)**
 * `VITE_API_URL`: The full URL where the backend server is running (e.g., `http://localhost:5001` for development).
-* `VITE_GOOGLE_CLIENT_ID`: Your Google OAuth Client ID, used by the frontend to display the Google Sign-In button.# SmartDocQ
+* `VITE_GOOGLE_CLIENT_ID`: Your Google OAuth Client ID, used by the frontend to display the Google Sign-In button.
