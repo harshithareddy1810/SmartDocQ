@@ -1,21 +1,18 @@
 import os
-import multiprocessing
 
-# Bind to the PORT environment variable
-bind = f"0.0.0.0:{os.environ.get('PORT', 10000)}"
-
-# Worker configuration for low memory
-workers = 1
+# Reduce workers to save memory on Render's 512MB limit
+workers = 1  # Changed from 2-4 to 1
 worker_class = "sync"
-threads = 2
-
-# Timeouts
+worker_connections = 100  # Reduced from 1000
 timeout = 120
 keepalive = 5
 
-# Memory management
-max_requests = 1000
-max_requests_jitter = 50
+# Memory optimization
+max_requests = 100  # Restart workers after 100 requests to prevent memory leaks
+max_requests_jitter = 20
+
+# Bind to the PORT environment variable
+bind = f"0.0.0.0:{os.getenv('PORT', '10000')}"
 
 # Logging
 accesslog = "-"

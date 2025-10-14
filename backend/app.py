@@ -25,12 +25,12 @@ from google.auth.transport import requests as g_requests
 import models
 import database
 
-# Optional text extraction deps
-import fitz  # PyMuPDF
-import docx
-from PIL import Image
-import pytesseract
-from vector_store import add_document, query_similar
+# Lazy import heavy dependencies only when needed
+# import fitz  # PyMuPDF - moved to function
+# import docx - moved to function
+# from PIL import Image - moved to function
+# import pytesseract - moved to function
+# from vector_store import add_document, query_similar - moved to function
 
 # New deps for URL importing
 import requests
@@ -192,6 +192,10 @@ def admin_required(f):
 
 def extract_text_from_pdf(filepath: str) -> str:
     """Extract text from PDF; OCR each page if needed."""
+    import fitz  # Lazy import
+    from PIL import Image
+    import pytesseract
+    
     text = ""
     with fitz.open(filepath) as doc:
         for page in doc:
@@ -204,6 +208,7 @@ def extract_text_from_pdf(filepath: str) -> str:
     return text
 
 def extract_text_from_docx(filepath: str) -> str:
+    import docx  # Lazy import
     d = docx.Document(filepath)
     return "\n".join(p.text for p in d.paragraphs)
 
@@ -213,6 +218,7 @@ def convert_docx_to_html(filepath: str) -> str:
     Produces paragraph and heading tags; not a perfect Word render but preserves structure.
     """
     try:
+        import docx  # Lazy import
         d = docx.Document(filepath)
         parts = ["<div class='docx-html'>"]
         for p in d.paragraphs:
@@ -233,6 +239,8 @@ def convert_docx_to_html(filepath: str) -> str:
         return "<pre>Failed to convert document to HTML.</pre>"
 
 def extract_text_from_image(filepath: str) -> str:
+    from PIL import Image
+    import pytesseract
     img = Image.open(filepath).convert("RGB")
     return pytesseract.image_to_string(img)
 
@@ -424,12 +432,11 @@ def upload_and_process_document(current_user):
             )
             db.add(new_document)
             db.commit()
-            # db.refresh(new_document)
-            # return jsonify({"message": "Document processed successfully", "doc_id": new_document.id}), 200
             db.refresh(new_document)
 
-            # ⬇️ Store text in ChromaDB
+            # ⬇️ Store text in ChromaDB - lazy import
             try:
+                from vector_store import add_document
                 add_document(new_document.id, extracted_text)
                 app.logger.info(f"Added document {new_document.id} to ChromaDB")
             except Exception as e:
@@ -874,9 +881,9 @@ def ask_question(current_user):
 
         # ---- Live Gemini AI ----
         from prompts import build_prompt, parse_llm_json
-                # safe_context = (document.text or "")[:6000]
-                # Retrieve relevant text from ChromaDB to enrich context
+        # Retrieve relevant text from ChromaDB to enrich context
         try:
+            from vector_store import query_similar
             similar_chunks, _ = query_similar(question)
             context_from_chroma = " ".join(similar_chunks)
         except Exception as e:
@@ -1142,6 +1149,6 @@ def delete_share_link(current_user, share_id: str):
     finally:
         db.close()
 
-# if __name__ == "__main__":
-#     import jwt  # noqa: F401
-#     app.run(host="0.0.0.0", port=5001, debug=True)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
