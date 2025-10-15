@@ -16,41 +16,55 @@ const LoginPage = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [pauseScroll, setPauseScroll] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleManualLogin = async (e) => {
     e.preventDefault();
+    setError("");
+    setIsLoading(true);
+    
     try {
+      console.log("Attempting login to:", `${API_BASE}/api/login`);
+      
       const res = await axios.post(`${API_BASE}/api/login`, 
         { email, password },
         {
           headers: {
             'Content-Type': 'application/json'
           },
-          withCredentials: false  // Change to false for production
+          withCredentials: false
         }
       );
+      
       const token = res.data?.token;
       const role = res.data?.role;
       
-      console.log("Login response:", { token: token?.substring(0, 20) + "...", role });
+      console.log("Login successful");
       
       if (!token) throw new Error("No token returned");
       
-      // Store role in localStorage before login
       localStorage.setItem("user_role", role || "student");
-      
       login(token);
       
-      // Navigate based on role
       if (role === "admin") {
-        console.log("Navigating to admin dashboard");
         navigate('/admin');
       } else {
         navigate('/upload');
       }
     } catch (err) {
       console.error("Login error:", err);
-      setError(err.response?.data?.message || "Login failed. Please try again.");
+      
+      if (err.code === 'ERR_NETWORK') {
+        setError("Cannot connect to server. Please check if the backend is running.");
+      } else if (err.response?.status === 401) {
+        setError("Invalid email or password.");
+      } else if (err.response?.status === 502) {
+        setError("Server is temporarily unavailable. Please try again in a few minutes.");
+      } else {
+        setError(err.response?.data?.message || "Login failed. Please try again.");
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -274,23 +288,43 @@ const LoginPage = () => {
           <form onSubmit={handleManualLogin}>
             <div className="input-group">
               <label htmlFor="email">Email</label>
-              <input id="email" type="email" value={email}
-                     onChange={(e) => setEmail(e.target.value)} required />
+              <input 
+                id="email" 
+                type="email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)} 
+                required 
+                disabled={isLoading}
+              />
             </div>
             <div className="input-group">
               <label htmlFor="password">Password</label>
-              <input id="password" type="password" value={password}
-                     onChange={(e) => setPassword(e.target.value)} required />
+              <input 
+                id="password" 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)} 
+                required 
+                disabled={isLoading}
+              />
             </div>
             {error && <p className="error">{error}</p>}
-            <button type="submit" className="login-btn">Login</button>
+            <button 
+              type="submit" 
+              className="login-btn"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Logging in...' : 'Login'}
+            </button>
           </form>
 
           <div style={{ textAlign: "center", margin: "20px 0", color: "#888" }}>OR</div>
 
           <div className="google-login-button-container">
-            <GoogleLogin onSuccess={handleGoogleSuccess}
-                         onError={() => setError("Google login failed. Please try again.")} />
+            <GoogleLogin 
+              onSuccess={handleGoogleSuccess}
+              onError={() => setError("Google login failed. Please try again.")} 
+            />
           </div>
 
           <div className="extra-links">

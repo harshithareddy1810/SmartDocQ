@@ -53,22 +53,16 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 CORS(app, resources={
     r"/api/*": {
         "origins": [
-            "http://localhost:5173", 
-            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+            "http://localhost:3000", 
             "https://smartdocq-gfzj.onrender.com"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "expose_headers": ["Content-Type", "Authorization"],
         "supports_credentials": True,
-        "max_age": 3600
-    },
-    r"/uploads/*": {
-        "origins": "*",
-        "methods": ["GET"],
-        "allow_headers": ["*"]
-    },
-}, supports_credentials=True)
+        "expose_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 logging.basicConfig(level=logging.DEBUG)
 bcrypt = Bcrypt(app)
@@ -1165,26 +1159,28 @@ def delete_share_link(current_user, share_id: str):
 # =========================
 # Health Check Routes
 # =========================
-@app.get("/")
-def health_check():
-    """Health check endpoint"""
+@app.get("/"))
+def health_check()::
+    """Health check endpoint"""    """Health check endpoint"""
     return jsonify({
-        "status": "healthy",
-        "service": "SmartDocQ Backend",
-        "version": "1.0.0",
-        "ai_enabled": AI_ENABLED
+        "status": "healthy",althy",
+        "service": "SmartDocQ Backend",cQ Backend",
+        "version": "1.0.0",ion": "1.0.0",
+        "ai_enabled": AI_ENABLED": AI_ENABLED
     })
 
 @app.get("/api/health")
 def api_health():
-    """Detailed health check"""
+    """Detailed health check"""k"""
     return jsonify({
-        "status": "healthy",
-        "database": "connected",
-        "ai_model": MODEL_NAME if AI_ENABLED else "disabled",
-        "frontend_url": os.getenv("FRONTEND_URL", "not set")
+        "status": "healthy",  "status": "healthy",
+        "database": "connected",        "database": "connected",
+        "ai_model": MODEL_NAME if AI_ENABLED else "disabled",EL_NAME if AI_ENABLED else "disabled",
+        "frontend_url": os.getenv("FRONTEND_URL", "not set")_url": os.getenv("FRONTEND_URL", "not set")
     })
 
-if __name__ == "__main__":
+@app.route('/health', methods=['GET'])
+def health_check():ORT", 10000))
+    """Health check endpoint to prevent service from sleeping"""    return jsonify({        "status": "healthy",        "timestamp": datetime.now().isoformat()    }), 200if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
