@@ -1159,28 +1159,28 @@ def delete_share_link(current_user, share_id: str):
 # =========================
 # Health Check Routes
 # =========================
-@app.get("/"))
-def health_check()::
-    """Health check endpoint"""    """Health check endpoint"""
+@app.route("/")
+def index():
+    return jsonify({"message": "SmartDocQ API is running"}), 200
+
+@app.route("/health", methods=['GET'])
+def health_check():
+    """Health check endpoint to prevent service from sleeping"""
     return jsonify({
-        "status": "healthy",althy",
-        "service": "SmartDocQ Backend",cQ Backend",
-        "version": "1.0.0",ion": "1.0.0",
-        "ai_enabled": AI_ENABLED": AI_ENABLED
-    })
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat()
+    }), 200
 
 @app.get("/api/health")
 def api_health():
-    """Detailed health check"""k"""
+    """Detailed health check"""
     return jsonify({
-        "status": "healthy",  "status": "healthy",
-        "database": "connected",        "database": "connected",
-        "ai_model": MODEL_NAME if AI_ENABLED else "disabled",EL_NAME if AI_ENABLED else "disabled",
-        "frontend_url": os.getenv("FRONTEND_URL", "not set")_url": os.getenv("FRONTEND_URL", "not set")
-    })
+        "status": "healthy",
+        "database": "connected",
+        "ai_model": MODEL_NAME if AI_ENABLED else "disabled",
+        "frontend_url": os.getenv("FRONTEND_URL", "not set")
+    }), 200
 
-@app.route('/health', methods=['GET'])
-def health_check():ORT", 10000))
-    """Health check endpoint to prevent service from sleeping"""    return jsonify({        "status": "healthy",        "timestamp": datetime.now().isoformat()    }), 200if __name__ == "__main__":
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
