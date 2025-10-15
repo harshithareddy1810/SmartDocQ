@@ -7,4 +7,13 @@ export default defineConfig({
     //port: 5173,
     historyApiFallback: true,
   },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: './index.html',
+      },
+    },
+  },
+  publicDir: 'public',
 });
