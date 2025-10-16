@@ -1,6 +1,6 @@
 // // src/App.jsx
 import React from "react";
-import { Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, HashRouter, useLocation } from "react-router-dom";
 
 import WelcomePage from "./pages/WelcomePage";
 import LoginPage from "./pages/LoginPage";
@@ -14,23 +14,23 @@ import SharedConversationPage from "./pages/SharedConversationPage";
 
 import { useAuth } from "./context/AuthContext";
 
-const RequireAuth = ({ children }) => {
+// We create an inner component that runs inside the Router so hooks like useLocation work correctly.
+function InnerApp() {
+  const location = useLocation();
   const { isAuthenticated, isBootstrapped } = useAuth();
-  const location = useLocation();
 
-  // Avoid redirect flicker while we're validating the stored token on load
-  if (!isBootstrapped) {
-    return null; // or a loader/spinner
-  }
+  // RequireAuth must be defined inside Router context where useLocation is available.
+  const RequireAuth = ({ children }) => {
+    // Avoid redirect flicker while we're validating the stored token on load
+    if (!isBootstrapped) {
+      return null; // or a loader/spinner
+    }
+    if (!isAuthenticated) {
+      return <Navigate to="/login" replace state={{ from: location }} />;
+    }
+    return children;
+  };
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-  return children;
-};
-
-function App() {
-  const location = useLocation();
   const hideHeader =
     location.pathname === "/" ||
     location.pathname === "/login" ||
@@ -84,6 +84,16 @@ function App() {
         <Route path="/share/:shareId" element={<SharedConversationPage />} />
       </Routes>
     </>
+  );
+}
+
+function App() {
+  // Use HashRouter so refreshing a page works even if the hosting server isn't serving index.html for all paths.
+  // This avoids the white/blank screen on reload for SPA routes.
+  return (
+    <HashRouter>
+      <InnerApp />
+    </HashRouter>
   );
 }
 
