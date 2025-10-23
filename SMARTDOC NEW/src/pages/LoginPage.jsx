@@ -25,60 +25,63 @@ const LoginPage = () => {
     
     try {
       console.log("Attempting login to:", `${API_BASE}/api/login`);
-      
-      const res = await axios.post(`${API_BASE}/api/login`, 
-        { email, password },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          withCredentials: false
-        }
-      );
-      
+      const start = Date.now();
+      const axiosConfig = {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 8000, // 8s timeout to fail fast when backend is sleeping/sluggish
+        withCredentials: false
+      };
+      const res = await axios.post(`${API_BASE}/api/login`, { email, password }, axiosConfig);
+      console.log(`Login request completed in ${Date.now() - start}ms`);
+
       const token = res.data?.token;
       const role = res.data?.role;
-      
-      console.log("Login successful");
-      
       if (!token) throw new Error("No token returned");
-      
       localStorage.setItem("user_role", role || "student");
       login(token);
-      
-      if (role === "admin") {
-        navigate('/admin');
-      } else {
-        navigate('/upload');
-      }
+      if (role === "admin") navigate('/admin'); else navigate('/upload');
     } catch (err) {
       console.error("Login error:", err);
-      
-      if (err.code === 'ERR_NETWORK') {
-        setError("Cannot connect to server. Please check if the backend is running.");
+      // Timeout
+      if (err.code === 'ECONNABORTED' || err.message?.toLowerCase()?.includes('timeout')) {
+        setError("Request timed out — the backend may be sleeping or unreachable. Try again in a few seconds.");
+      // Network-level failure (DNS / connection refused)
+      } else if (err.code === 'ERR_NETWORK' || !err.response) {
+        if (!navigator.onLine) {
+          setError("You appear to be offline. Check your network connection.");
+        } else {
+          setError("Cannot reach server. Is the backend running and reachable?");
+        }
       } else if (err.response?.status === 401) {
         setError("Invalid email or password.");
-      } else if (err.response?.status === 502) {
-        setError("Server is temporarily unavailable. Please try again in a few minutes.");
+      } else if ([502, 503].includes(err.response?.status)) {
+        setError("Server unavailable (502/503). Please try again shortly.");
       } else {
-        setError(err.response?.data?.message || "Login failed. Please try again.");
+        setError(err.response?.data?.message || "Login failed. Check console/network tab for details.");
       }
     } finally {
       setIsLoading(false);
     }
   };
-
+  
   const handleGoogleSuccess = async (credentialResponse) => {
+    setError("");
+    setIsLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/google-login`, {
-        credential: credentialResponse.credential,
-      });
+      const axiosConfig = { timeout: 8000, headers: { 'Content-Type': 'application/json' } };
+      const res = await axios.post(`${API_BASE}/api/google-login`, { credential: credentialResponse.credential }, axiosConfig);
       const token = res.data?.token;
       if (!token) throw new Error("No token returned");
       login(token);
       navigate("/upload");
-    } catch {
-      setError("Google login failed. Please try again.");
+    } catch (err) {
+      console.error("Google login error:", err);
+      // GSI origin/client errors won't appear here; provide actionable hint
+      setError(
+        "Google sign-in failed. If the console shows an OAuth origin error, ensure your Google OAuth client allows this origin (or use email/password)."
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
