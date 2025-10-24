@@ -74,7 +74,8 @@ models.Base.metadata.create_all(bind=database.engine)
 AI_ENABLED = os.getenv("AI_ENABLED", "true").lower() == "true"
 TESTING_MODE_ON_RATE_LIMIT = os.getenv("TESTING_MODE_ON_RATE_LIMIT", "false").lower() == "true"
 
-# Model name is best-effort; we’ll try candidates if SDK is available
+# Model name is best-effort; prefer the requested alternate model by default.
+# This still respects the MODEL_NAME env var if you set it in .env.
 MODEL_NAME = os.getenv("MODEL_NAME", "models/gemini-2.5-flash-lite")
 try:
     TEMPERATURE = float(os.getenv("TEMPERATURE", "0.2"))
@@ -92,13 +93,15 @@ if AI_ENABLED and GOOGLE_API_KEY:
     try:
         import google.generativeai as genai  # type: ignore
         genai.configure(api_key=GOOGLE_API_KEY)
-        # try to use a working model if available
+        # Prefer the chosen model first, then fall back to other candidates.
         model_candidates = [
-            "models/gemini-pro-latest",
-            "models/gemini-2.5-pro",
-            "models/gemini-2.5-flash",
             "models/gemini-2.5-flash-lite",
+            "models/gemini-2.5-flash",
             "models/gemini-flash-latest",
+            "models/gemini-1.5-flash",
+            "models/gemini-1.5",
+            "models/gemini-2.5-pro",
+            "models/gemini-pro-latest",
         ]
         try:
             available_models = [m.name for m in genai.list_models()]
@@ -107,7 +110,7 @@ if AI_ENABLED and GOOGLE_API_KEY:
                     MODEL_NAME = m
                     break
         except Exception:
-            pass
+            app.logger.debug("Could not list models; keeping configured/default MODEL_NAME")
         app.logger.info(f"AI is ENABLED. Using model: {MODEL_NAME}")
     except Exception as e:
         app.logger.error(f"Failed to init Google Generative AI SDK: {e}")
