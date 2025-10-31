@@ -2,6 +2,15 @@
 # -*- coding: utf-8 -*-
 import re
 import sys
+import os
+# If run on Windows, provide guidance
+if os.name == 'nt':
+    print("Detected Windows environment. To install requirements, run:")
+    print("  py -3 -m pip install -r requirements.txt")
+    print("Or activate the virtualenv and run pip:")
+    print("  .\\backend\\rag-env\\Scripts\\activate")
+    print("  pip install -r requirements.txt")
+    sys.exit(1)
 from build.__main__ import entrypoint
 if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
