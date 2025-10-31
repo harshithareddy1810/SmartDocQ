@@ -373,7 +373,7 @@ def login():
 
         if not user or not user.hashed_password or not bcrypt.check_password_hash(user.hashed_password, password):
             app.logger.warning(f"Invalid login attempt for: {email}")
-            return jsonify({"message": "Invalid credentials!"}, 401)
+            return jsonify({"message": "Invalid credentials!"}), 401
 
         token = _issue_token_for(user.email)
         return jsonify({"token": token, "role": getattr(user, "role", "student")})
