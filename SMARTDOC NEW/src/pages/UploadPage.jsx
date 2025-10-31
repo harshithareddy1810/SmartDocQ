@@ -4,7 +4,13 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { FiUpload, FiFileText, FiFile, FiFilePlus, FiImage, FiLink, FiEdit3, FiChevronDown } from "react-icons/fi";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5001";
+
+// Debug: Log to verify
+console.log("🔍 UploadPage Debug:");
+console.log("  - VITE_API_BASE from env:", import.meta.env.VITE_API_BASE);
+console.log("  - API_BASE being used:", API_BASE);
+console.log("  - All env vars:", import.meta.env);
 
 const UploadPage = () => {
   const navigate = useNavigate();
@@ -78,7 +84,10 @@ const UploadPage = () => {
     setIsUploading(true);
     setUploadProgress(0);
     const token = tokenGuard();
-    if (!token) return;
+    if (!token) {
+      setIsUploading(false);
+      return;
+    }
 
     try {
       const form = new FormData();
@@ -93,20 +102,41 @@ const UploadPage = () => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setUploadProgress(percentCompleted);
         },
+        timeout: 60000, // 60 second timeout for large files
       });
 
       const { doc_id } = res.data || {};
       if (!doc_id) {
         alert("Upload succeeded but server did not return document id.");
+        setIsUploading(false);
         return;
       }
-      navigate(`/qa/${doc_id}`);
+      
+      // Small delay to show 100% progress
+      setTimeout(() => {
+        navigate(`/qa/${doc_id}`);
+      }, 500);
     } catch (err) {
       console.error("File upload failed:", err);
-      // Do not auto-redirect on transient auth/network issues
-      alert("Upload failed: " + (err.response?.data?.message || err.message));
-    } finally {
       setIsUploading(false);
+      
+      let errorMessage = "Upload failed. ";
+      if (err.code === 'ECONNABORTED') {
+        errorMessage += "Request timed out. Please try with a smaller file.";
+      } else if (err.response?.status === 413) {
+        errorMessage += "File is too large. Maximum size is 16MB.";
+      } else if (err.response?.status === 400) {
+        errorMessage += err.response?.data?.error || "Invalid file type or format.";
+      } else if (err.response?.status === 500) {
+        errorMessage += "Server error processing file. Please try again.";
+      } else if (!navigator.onLine) {
+        errorMessage += "No internet connection.";
+      } else {
+        errorMessage += err.response?.data?.message || err.response?.data?.error || err.message || "Unknown error";
+      }
+      
+      alert(errorMessage);
+    } finally {
       setUploadProgress(0);
     }
   };

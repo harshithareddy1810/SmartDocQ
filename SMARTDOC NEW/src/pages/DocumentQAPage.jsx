@@ -4,6 +4,7 @@ import mammoth from 'mammoth';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import ttsService from '../utils/textToSpeech';
 
 
 // Set default auth header if token exists
@@ -35,21 +36,28 @@ import '../index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
 
+console.log("DocumentQAPage API_BASE:", API_BASE); // Debug log
 
-/** -------- Filled thumbs feedback (👍 / 👎) -------- */
-const FeedbackButtons = React.memo(({ messageId }) => {
+/** -------- Enhanced Feedback with Comment Box -------- */
+const FeedbackButtons = React.memo(({ messageId, messageContent }) => {
   const [mine, setMine] = useState(null); // "up" | "down" | null
   const [loading, setLoading] = useState(false);
+  const [showCommentBox, setShowCommentBox] = useState(false);
+  const [comment, setComment] = useState('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
-
-  const send = async (rating) => {
+  const send = async (rating, commentText = '') => {
     if (!messageId || loading) return;
     setLoading(true);
     try {
       const token = localStorage.getItem('jwt_token');
       await axios.post(
         `${API_BASE}/api/feedback`,
-        { message_id: messageId, rating },
+        { 
+          message_id: messageId, 
+          rating,
+          comment: commentText  // Include comment
+        },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -58,31 +66,207 @@ const FeedbackButtons = React.memo(({ messageId }) => {
         }
       );
       setMine(rating);
+      
+      // Show success message
+      if (rating === 'down' && commentText) {
+        alert('Thank you for your feedback! We will use it to improve our responses.');
+      }
+      
+      // Close comment box after submission
+      setShowCommentBox(false);
+      setComment('');
     } catch (err) {
       console.error('Feedback failed:', err?.response?.data || err.message);
+      alert('Failed to submit feedback. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleThumbsDown = () => {
+    if (mine === 'down') return; // Already rated down
+    setShowCommentBox(true);
+  };
+
+  const handleCommentSubmit = () => {
+    if (!comment.trim()) {
+      alert('Please provide a comment about what went wrong.');
+      return;
+    }
+    send('down', comment);
+  };
+
+  const handleThumbsUp = () => {
+    if (mine === 'up') return; // Already rated up
+    send('up');
+  };
+
+  // TTS handlers
+  const handleSpeak = () => {
+    if (!messageContent) return;
+    
+    if (isSpeaking) {
+      // Stop speaking
+      ttsService.cancel();
+      setIsSpeaking(false);
+    } else {
+      // Start speaking
+      ttsService.speak(messageContent, {
+        rate: 1.0,
+        pitch: 1.0,
+        volume: 1.0,
+        onStart: () => setIsSpeaking(true),
+        onEnd: () => setIsSpeaking(false),
+        onError: () => {
+          setIsSpeaking(false);
+          alert('Speech synthesis failed. Please check your browser settings.');
+        }
+      });
+    }
+  };
 
   const btn = {
     border: 'none',
     background: 'transparent',
-    cursor: 'pointer',
+    cursor: loading ? 'not-allowed' : 'pointer',
     fontSize: '1.3rem',
     padding: '2px 6px',
+    opacity: loading ? 0.5 : 1,
   };
 
-
   return (
-    <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-      <button onClick={() => send('up')} disabled={loading} style={btn} title="Helpful" aria-label="thumbs up">
-        {mine === 'up' ? <BsHandThumbsUpFill color="#22c55e" /> : <BsHandThumbsUp color="#6b7280" />}
-      </button>
-      <button onClick={() => send('down')} disabled={loading} style={btn} title="Not helpful" aria-label="thumbs down">
-        {mine === 'down' ? <BsHandThumbsDownFill color="#ef4444" /> : <BsHandThumbsDown color="#6b7280" />}
-      </button>
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        {/* Thumbs Up */}
+        <button 
+          onClick={handleThumbsUp} 
+          disabled={loading || mine === 'up'} 
+          style={btn} 
+          title="Helpful" 
+          aria-label="thumbs up"
+        >
+          {mine === 'up' ? <BsHandThumbsUpFill color="#22c55e" /> : <BsHandThumbsUp color="#6b7280" />}
+        </button>
+
+        {/* Thumbs Down */}
+        <button 
+          onClick={handleThumbsDown} 
+          disabled={loading || mine === 'down'} 
+          style={btn} 
+          title="Not helpful" 
+          aria-label="thumbs down"
+        >
+          {mine === 'down' ? <BsHandThumbsDownFill color="#ef4444" /> : <BsHandThumbsDown color="#6b7280" />}
+        </button>
+
+        {/* TTS Button */}
+        {ttsService.isSupported() && (
+          <button
+            onClick={handleSpeak}
+            style={{
+              ...btn,
+              fontSize: '1.2rem',
+              color: isSpeaking ? '#3b82f6' : '#6b7280',
+            }}
+            title={isSpeaking ? "Stop speaking" : "Read aloud"}
+            aria-label="text to speech"
+          >
+            {isSpeaking ? '🔊' : '🔈'}
+          </button>
+        )}
+      </div>
+
+      {/* Comment Box for Bad Reviews */}
+      {showCommentBox && (
+        <div style={{
+          marginTop: 12,
+          padding: 12,
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: 8,
+          animation: 'slideDown 0.3s ease'
+        }}>
+          <div style={{ 
+            fontSize: 13, 
+            fontWeight: 600, 
+            color: '#fca5a5', 
+            marginBottom: 8 
+          }}>
+            What went wrong with this response?
+          </div>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Please describe the issue (incorrect information, unhelpful answer, etc.)..."
+            style={{
+              width: '100%',
+              minHeight: 80,
+              padding: 8,
+              background: 'rgba(11, 15, 20, 0.8)',
+              border: '1px solid rgba(148, 163, 184, 0.3)',
+              borderRadius: 6,
+              color: '#e7e7eb',
+              fontSize: 13,
+              fontFamily: 'inherit',
+              resize: 'vertical'
+            }}
+            autoFocus
+          />
+          <div style={{ 
+            display: 'flex', 
+            gap: 8, 
+            marginTop: 8,
+            justifyContent: 'flex-end'
+          }}>
+            <button
+              onClick={() => {
+                setShowCommentBox(false);
+                setComment('');
+              }}
+              style={{
+                padding: '6px 12px',
+                background: 'rgba(148, 163, 184, 0.15)',
+                border: '1px solid rgba(148, 163, 184, 0.3)',
+                borderRadius: 6,
+                color: '#cbd5e1',
+                fontSize: 12,
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCommentSubmit}
+              disabled={loading}
+              style={{
+                padding: '6px 12px',
+                background: loading ? 'rgba(239, 68, 68, 0.5)' : 'rgba(239, 68, 68, 0.8)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                borderRadius: 6,
+                color: '#fff',
+                fontSize: 12,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: 600
+              }}
+            >
+              {loading ? 'Submitting...' : 'Submit Feedback'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 });
@@ -161,87 +345,164 @@ const DocumentPreview = React.memo(function DocumentPreview({ doc, numPages, onS
   // Image types
   if (lower.match(/\.(png|jpe?g|gif|bmp|tiff|webp)$/)) {
     return (
-      <div className="image-preview" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <div className="image-preview" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 12 }}>
         <img
           src={docUrl}
           alt={filename}
           style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 200px)', objectFit: 'contain', borderRadius: 8 }}
-          onError={(e) => { e.target.onerror = null; e.target.src = ''; }}
+          onError={(e) => { 
+            e.target.onerror = null; 
+            e.target.style.display = 'none';
+            e.target.parentElement.innerHTML = '<div style="color: #fca5a5; padding: 12px;">Failed to load image</div>';
+          }}
         />
       </div>
     );
   }
 
-  // PDF -> reuse PdfPane
+  // PDF -> use iframe for reliability
   if (lower.endsWith('.pdf')) {
-    // Use a simple iframe fallback for reliability across browsers/dev setups.
-    if (!docUrl) return <p>No PDF URL available.</p>;
+    if (!docUrl) return <p style={{ color: '#cbd5e1', padding: 12 }}>No PDF URL available.</p>;
     return (
       <div style={{ width: '100%', height: '100%' }}>
-        <iframe src={docUrl} title={filename} style={{ width: '100%', height: 'calc(100vh - 180px)', border: 'none' }} />
-        <div style={{ padding: 8 }}>
-          <a href={docUrl} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>Open raw PDF in new tab</a>
+        <iframe 
+          src={docUrl} 
+          title={filename} 
+          style={{ width: '100%', height: 'calc(100vh - 180px)', border: 'none', borderRadius: 8 }} 
+          onError={() => console.error('PDF iframe failed to load')}
+        />
+        <div style={{ padding: 8, textAlign: 'center' }}>
+          <a href={docUrl} target="_blank" rel="noreferrer" style={{ color: '#93c5fd', fontSize: 14 }}>
+            Open PDF in new tab
+          </a>
         </div>
       </div>
     );
-    // If needed, PdfPane can be used instead of iframe for advanced rendering:
-    // return <PdfPane filename={filename} numPages={numPages} onSetNumPages={onSetNumPages} />;
   }
 
-  // DOCX: fetch binary and convert to HTML (preserve formatting)
+  // DOCX: Use server-generated HTML preview
   if (lower.endsWith('.docx')) {
-    const [html, setHtml] = React.useState(null);
-    const [loadingHtml, setLoadingHtml] = React.useState(false);
+    const [htmlContent, setHtmlContent] = React.useState(null);
+    const [loadingHtml, setLoadingHtml] = React.useState(true);
+    const [error, setError] = React.useState(null);
+    
+    const htmlFilename = filename.replace(/\.docx$/i, '.html');
+    const htmlUrl = `${API_BASE}/uploads/${htmlFilename}`;
+    
     useEffect(() => {
       let mounted = true;
-      if (!docUrl) return;
       setLoadingHtml(true);
+      setError(null);
+      
       (async () => {
         try {
-          const res = await fetch(docUrl);
-          const arrayBuffer = await res.arrayBuffer();
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-          if (!mounted) return;
-          setHtml(result?.value || '<div>No content</div>');
+          const res = await fetch(htmlUrl);
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          const html = await res.text();
+          if (mounted) {
+            setHtmlContent(html);
+          }
         } catch (e) {
-          console.error('Failed to load/convert docx:', e);
-          if (mounted) setHtml('<pre style="white-space:pre-wrap;">Failed to render document.</pre>');
+          console.error('Failed to load DOCX HTML preview:', e);
+          if (mounted) {
+            setError(e.message);
+            // Fallback to plain text if available
+            if (doc?.text) {
+              setHtmlContent(`<div style="padding: 12px; color: #e5e7eb;"><pre style="white-space: pre-wrap; font-family: inherit;">${doc.text}</pre></div>`);
+            }
+          }
         } finally {
           if (mounted) setLoadingHtml(false);
         }
       })();
+      
       return () => { mounted = false; };
-    }, [docUrl]);
+    }, [htmlUrl, doc?.text]);
 
-    if (loadingHtml && !html) return <div style={{ padding: 18, color: '#cbd5e1' }}>Rendering document...</div>;
+    if (loadingHtml) {
+      return (
+        <div style={{ padding: 18, color: '#cbd5e1', textAlign: 'center' }}>
+          <div style={{ marginBottom: 8 }}>📄</div>
+          <div>Rendering document...</div>
+        </div>
+      );
+    }
+    
+    if (error && !htmlContent) {
+      return (
+        <div style={{ padding: 18, color: '#fca5a5' }}>
+          <p>Failed to load document preview: {error}</p>
+          {doc?.text && (
+            <div style={{ marginTop: 12, padding: 12, background: 'rgba(11, 15, 20, 0.6)', borderRadius: 8 }}>
+              <pre style={{ whiteSpace: 'pre-wrap', color: '#e5e7eb', fontSize: 14 }}>{doc.text.substring(0, 1000)}...</pre>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
     return (
-      <div className="docx-preview" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 160px)', padding: 12 }}>
-        <div dangerouslySetInnerHTML={{ __html: html || '<div>No content</div>' }} />
+      <div className="docx-preview" style={{ 
+        overflowY: 'auto', 
+        maxHeight: 'calc(100vh - 160px)', 
+        padding: 16,
+        background: 'rgba(11, 15, 20, 0.4)',
+        borderRadius: 8
+      }}>
+        <div dangerouslySetInnerHTML={{ __html: htmlContent || '<div>No content</div>' }} />
       </div>
     );
   }
 
-  // Text formats (server extracts text for txt) - render plain text
+  // Text formats
   if (lower.endsWith('.txt') || doc?.text) {
     const text = doc?.text || 'No preview available for this document.';
     return (
-      <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 160px)', padding: 12 }}>
-        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', color: '#e5e7eb' }}>{text}</pre>
+      <div style={{ 
+        overflowY: 'auto', 
+        maxHeight: 'calc(100vh - 160px)', 
+        padding: 16,
+        background: 'rgba(11, 15, 20, 0.4)',
+        borderRadius: 8
+      }}>
+        <pre style={{ 
+          whiteSpace: 'pre-wrap', 
+          wordBreak: 'break-word', 
+          fontFamily: 'inherit', 
+          color: '#e5e7eb',
+          fontSize: 14,
+          lineHeight: 1.6
+        }}>{text}</pre>
       </div>
     );
   }
 
-  // Other / unknown types: show download link
+  // Other / unknown types
   if (filename) {
     return (
-      <div style={{ padding: 18, color: '#cbd5e1' }}>
+      <div style={{ padding: 18, color: '#cbd5e1', textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
         <p>No preview available for this file type.</p>
-        <a href={docUrl} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>Open / download {filename}</a>
+        <a 
+          href={docUrl} 
+          target="_blank" 
+          rel="noreferrer" 
+          style={{ 
+            color: '#93c5fd', 
+            textDecoration: 'underline',
+            display: 'inline-block',
+            marginTop: 12
+          }}
+        >
+          Download {filename}
+        </a>
       </div>
     );
   }
 
-  return <p>No preview available.</p>;
+  return <p style={{ padding: 18, color: '#94a3b8' }}>No preview available.</p>;
 }, (prev, next) => prev.doc?.filename === next.doc?.filename && prev.doc?.text === next.doc?.text);
 
 
@@ -527,12 +788,13 @@ const DocumentQAPage = () => {
                     )}
                   </div>
 
-
-                  {/* Filled thumbs only for assistant messages WHEN message_id exists */}
+                  {/* Pass both messageId and messageContent to FeedbackButtons */}
                   {entry.role === 'assistant' && entry.message_id ? (
-                    <FeedbackButtons messageId={entry.message_id} />
+                    <FeedbackButtons 
+                      messageId={entry.message_id} 
+                      messageContent={entry.content}
+                    />
                   ) : null}
-
 
                   <div className="timestamp">{entry.time}</div>
                 </div>
@@ -831,15 +1093,15 @@ const DocumentQAPage = () => {
         .copy-btn { position:absolute; top:8px; right:8px; background: rgba(0,0,0,0.15); border:none; color:#cbd5e1; cursor:pointer; border-radius:6px; padding:4px; display:flex; opacity:0; transition:opacity .2s; }
         .message-content:hover .copy-btn { opacity:1; }
         .qa-input-section { margin-top: 12px; display:flex; gap:10px; align-items:center; }
-        .qa-input-section input { flex:1; padding: 12px 14px; border-radius: 12px; border:1px solid rgba(148,163,184,0.28); background: #0b1220; color:#e5e7eb; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
+        .qa-input-section input { flex:1; padding: 12px 14px; border-radius: 12px; border:1px solid rgba(148,163,184,0.28); background: #0b1220; color:#e7e7eb; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
         .qa-send-btn { background: linear-gradient(90deg,#7c3aed,#4f46e5); color:#fff; border:none; padding: 0 16px; height: 44px; border-radius: 12px; cursor:pointer; box-shadow: 0 12px 32px rgba(17,24,39,0.45); }
-        .mic-btn { height:42px; padding: 0 12px; border-radius:10px; border:1px solid rgba(148,163,184,0.25); background: rgba(148,163,184,0.10); color:#e5e7eb; }
+        .mic-btn { height:42px; padding: 0 12px; border-radius:10px; border:1px solid rgba(148,163,184,0.25); background: rgba(148,163,184,0.10); color:#e7e7eb; }
         .qa-header { background: rgba(15,23,42,0.85); border:1px solid rgba(148,163,184,0.20); border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
         .pdf-viewer { padding: 0; min-height: 0; }
         .pdf-scroll { overflow-y: auto; padding-right: 8px; max-height: calc(100vh - 160px); }
         .pdf-page { display:flex; justify-content:center; margin-bottom: 18px; }
-        .docx-preview { color: #e5e7eb; }
-        .docx-preview p { color: #e5e7eb; margin-bottom: 0.9rem; line-height: 1.6; }
+        .docx-preview { color: #e7e7eb; }
+        .docx-preview p { color: #e7e7eb; margin-bottom: 0.9rem; line-height: 1.6; }
         .docx-preview h1, .docx-preview h2, .docx-preview h3 { color: #fff; margin: 0.6rem 0; }
         .docx-preview a { color: #60a5fa; text-decoration: underline; }
         .docx-preview ul, .docx-preview ol { margin-left: 1.2rem; margin-bottom: 0.9rem; }
@@ -1050,7 +1312,7 @@ const DocumentQAPage = () => {
           border-radius: 8px;
           border: none;
           background: transparent;
-          color: #e5e7eb;
+          color: #e7e7eb;
           font-size: 14px;
         }
         .assistant-popup-input input:focus {
@@ -1131,7 +1393,7 @@ const DocumentQAPage = () => {
           background: rgba(2, 6, 23, 0.6);
           border: 1px solid rgba(148, 163, 184, 0.3);
           border-radius: 8px;
-          color: #e5e7eb;
+          color: #e7e7eb;
           font-size: 14px;
         }
         

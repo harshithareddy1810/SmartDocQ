@@ -1,12 +1,15 @@
 // src/pages/LoginPage.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { GoogleLogin } from "@react-oauth/google";
 import axios from "axios";
+import { GoogleLogin } from "@react-oauth/google";
+import { checkApiConnection } from "../utils/apiCheck";
 import { useAuth } from "../context/AuthContext";
 import "../../pages.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+
+console.log("LoginPage API_BASE:", API_BASE); // Debug log
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -17,12 +20,28 @@ const LoginPage = () => {
   const [error, setError] = useState("");
   const [pauseScroll, setPauseScroll] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [backendStatus, setBackendStatus] = useState("checking");
+
+  // Check backend connection on mount
+  useEffect(() => {
+    checkApiConnection().then(isConnected => {
+      setBackendStatus(isConnected ? 'connected' : 'disconnected');
+    });
+  }, []);
 
   const handleManualLogin = async (e) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
-    
+
+    // Check backend first
+    const isConnected = await checkApiConnection();
+    if (!isConnected) {
+      setError("Cannot reach server. Please check if backend is running on " + API_BASE);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       console.log("Attempting login to:", `${API_BASE}/api/login`);
       const start = Date.now();
@@ -336,6 +355,22 @@ const LoginPage = () => {
           </div>
         </div>
       </div>
+      {/* Add backend status indicator */}
+      {backendStatus === 'disconnected' && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          background: '#ef4444',
+          color: 'white',
+          padding: '12px 20px',
+          borderRadius: 8,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          zIndex: 9999
+        }}>
+          ⚠️ Backend not reachable at {API_BASE}
+        </div>
+      )}
       <style>{`
         .auth-top-logo:hover span { color: #ffffff; }
       `}</style>

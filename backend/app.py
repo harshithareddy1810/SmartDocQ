@@ -51,10 +51,14 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # CORS
 CORS(app, resources={
-    r"/api/*": {
+    r"/*": {  # Changed from r"/api/*" to r"/*" to allow all routes including /health
         "origins": [
             "http://localhost:5173",
-            "http://localhost:3000", 
+            "http://localhost:5174",  # Added port 5174
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",  # Added port 5174
+            "http://127.0.0.1:3000",
             "https://smartdocq-gfzj.onrender.com"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -66,6 +70,13 @@ CORS(app, resources={
 
 logging.basicConfig(level=logging.DEBUG)
 bcrypt = Bcrypt(app)
+
+# Add request logging middleware
+@app.before_request
+def log_request_info():
+    app.logger.debug('Headers: %s', request.headers)
+    app.logger.debug('Body: %s', request.get_data())
+    app.logger.info(f'Request: {request.method} {request.path}')
 
 # ---- DB: ensure tables exist ----
 models.Base.metadata.create_all(bind=database.engine)
@@ -226,29 +237,55 @@ def extract_text_from_docx(filepath: str) -> str:
 
 
 def convert_docx_to_html(filepath: str) -> str:
-    """Basic DOCX -> HTML conversion using python-docx.
-    Produces paragraph and heading tags; not a perfect Word render but preserves structure.
-    """
+    """Enhanced DOCX -> HTML conversion with better formatting."""
     try:
-        import docx  # Lazy import
+        import docx
+        from docx.shared import Pt
+        
         d = docx.Document(filepath)
-        parts = ["<div class='docx-html'>"]
+        parts = ['<div class="docx-html" style="font-family: Arial, sans-serif; line-height: 1.6; color: #e5e7eb;">']
+        
         for p in d.paragraphs:
+            if not p.text.strip():
+                continue
+                
             text = (p.text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            style = (p.style.name or "").lower() if getattr(p, 'style', None) else ""
-            if style.startswith('heading') or style.startswith('h1'):
-                parts.append(f"<h2>{text}</h2>")
-            elif style.startswith('h2'):
-                parts.append(f"<h3>{text}</h3>")
+            style_name = (p.style.name or "").lower() if hasattr(p, 'style') and p.style else ""
+            
+            # Handle headings
+            if 'heading 1' in style_name or style_name.startswith('h1'):
+                parts.append(f'<h1 style="color: #fff; font-size: 24px; margin: 16px 0 8px;">{text}</h1>')
+            elif 'heading 2' in style_name or style_name.startswith('h2'):
+                parts.append(f'<h2 style="color: #fff; font-size: 20px; margin: 14px 0 7px;">{text}</h2>')
+            elif 'heading 3' in style_name or style_name.startswith('h3'):
+                parts.append(f'<h3 style="color: #fff; font-size: 18px; margin: 12px 0 6px;">{text}</h3>')
             else:
-                # simple handling for bold/italic isn't implemented; keep plain
-                parts.append(f"<p>{text}</p>")
+                # Regular paragraph with run formatting
+                formatted_text = ""
+                for run in p.runs:
+                    run_text = (run.text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    style_attrs = []
+                    
+                    if run.bold:
+                        style_attrs.append("font-weight: bold")
+                    if run.italic:
+                        style_attrs.append("font-style: italic")
+                    if run.underline:
+                        style_attrs.append("text-decoration: underline")
+                    
+                    if style_attrs:
+                        formatted_text += f'<span style="{"; ".join(style_attrs)}">{run_text}</span>'
+                    else:
+                        formatted_text += run_text
+                
+                parts.append(f'<p style="margin: 8px 0;">{formatted_text or text}</p>')
+        
         parts.append("</div>")
         return "\n".join(parts)
-    except Exception:
+    except Exception as e:
         import traceback
-        app.logger.warning("DOCX->HTML conversion failed:\n" + traceback.format_exc())
-        return "<pre>Failed to convert document to HTML.</pre>"
+        app.logger.error(f"DOCX->HTML conversion failed: {str(e)}\n{traceback.format_exc()}")
+        return f'<div style="color: #fca5a5; padding: 12px;"><p>Failed to convert document to HTML.</p><pre>{str(e)}</pre></div>'
 
 def extract_text_from_image(filepath: str) -> str:
     from PIL import Image
@@ -319,6 +356,8 @@ def login():
         
         # Debug logging
         app.logger.info(f"Login attempt - Email: {email}")
+        app.logger.info(f"Request origin: {request.headers.get('Origin')}")
+        app.logger.info(f"Request host: {request.headers.get('Host')}")
         
         # Check for fixed admin credentials (case-insensitive email)
         if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
@@ -409,34 +448,61 @@ def upload_and_process_document(current_user):
                 return jsonify({"error": "No file selected"}), 400
 
             filename = secure_filename(file.filename)
+            ext = os.path.splitext(filename)[1].lower()
+            
+            # Validate file extension
+            allowed_extensions = ['.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.webp']
+            if ext not in allowed_extensions:
+                return jsonify({"error": f"Unsupported file type: {ext}. Allowed: {', '.join(allowed_extensions)}"}), 400
+            
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-            file.save(filepath)
-            app.logger.info(f"Saved uploaded file to {filepath}")
+            
+            try:
+                file.save(filepath)
+                app.logger.info(f"Saved uploaded file to {filepath}")
+            except Exception as e:
+                app.logger.error(f"Failed to save file: {str(e)}")
+                return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
 
             extracted_text = ""
-            ext = os.path.splitext(filename)[1].lower()
-            if ext == ".pdf":
-                extracted_text = extract_text_from_pdf(filepath)
-            elif ext == ".docx":
-                extracted_text = extract_text_from_docx(filepath)
-                # Additionally create an HTML preview for richer display
-                try:
-                    html_content = convert_docx_to_html(filepath)
-                    html_filename = os.path.splitext(filename)[0] + ".html"
-                    html_path = os.path.join(app.config["UPLOAD_FOLDER"], html_filename)
-                    with open(html_path, "w", encoding="utf-8") as hf:
-                        hf.write(html_content)
-                    app.logger.info(f"Wrote HTML preview to {html_path}")
-                except Exception:
-                    app.logger.exception("Failed to write HTML preview for docx")
-            elif ext == ".txt":
-                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    extracted_text = f.read()
-            elif ext in [".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"]:
-                extracted_text = extract_text_from_image(filepath)
-            else:
-                return jsonify({"error": f"Unsupported file type: {ext}"}), 400
+            
+            try:
+                if ext == ".pdf":
+                    extracted_text = extract_text_from_pdf(filepath)
+                    if not extracted_text.strip():
+                        app.logger.warning(f"No text extracted from PDF: {filename}")
+                        extracted_text = "[PDF contains no extractable text or is image-based]"
+                        
+                elif ext == ".docx":
+                    extracted_text = extract_text_from_docx(filepath)
+                    # Create HTML preview
+                    try:
+                        html_content = convert_docx_to_html(filepath)
+                        html_filename = os.path.splitext(filename)[0] + ".html"
+                        html_path = os.path.join(app.config["UPLOAD_FOLDER"], html_filename)
+                        with open(html_path, "w", encoding="utf-8") as hf:
+                            hf.write(html_content)
+                        app.logger.info(f"Created HTML preview: {html_path}")
+                    except Exception as html_err:
+                        app.logger.error(f"Failed to create HTML preview: {str(html_err)}")
+                        # Continue anyway - text extraction succeeded
+                        
+                elif ext == ".txt":
+                    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                        extracted_text = f.read()
+                        
+                elif ext in [".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"]:
+                    extracted_text = extract_text_from_image(filepath)
+                    if not extracted_text.strip():
+                        extracted_text = "[No text detected in image]"
+                else:
+                    return jsonify({"error": f"Unsupported file type: {ext}"}), 400
+                    
+            except Exception as extract_err:
+                app.logger.error(f"Text extraction failed for {filename}: {str(extract_err)}")
+                return jsonify({"error": f"Failed to process file: {str(extract_err)}"}), 500
 
+            # Create document record
             new_document = models.Document(
                 filename=filename,
                 text=extracted_text,
@@ -446,16 +512,20 @@ def upload_and_process_document(current_user):
             db.commit()
             db.refresh(new_document)
 
-            # ⬇️ Store text in ChromaDB - lazy import
+            # Store in ChromaDB
             try:
                 from vector_store import add_document
                 add_document(new_document.id, extracted_text)
                 app.logger.info(f"Added document {new_document.id} to ChromaDB")
             except Exception as e:
-                app.logger.warning(f"ChromaDB add failed: {e}")
+                app.logger.warning(f"ChromaDB add failed (non-critical): {e}")
 
-            return jsonify({"message": "Document processed successfully",
-                            "doc_id": new_document.id}), 200
+            return jsonify({
+                "message": "Document processed successfully",
+                "doc_id": new_document.id,
+                "filename": filename,
+                "text_length": len(extracted_text)
+            }), 200
 
         # ---- 2) JSON PATH (application/json) ----
         if request.is_json:
@@ -605,6 +675,7 @@ def create_feedback(current_user):
         message_id = data.get("message_id")
         rating = (data.get("rating") or "").lower()
         note = data.get("note")
+        comment = data.get("comment")  # Add comment field
 
         try:
             message_id = int(message_id)
@@ -619,10 +690,18 @@ def create_feedback(current_user):
         if not msg:
             return jsonify({"error": "Message not found"}), 404
 
-        fb = models.Feedback(message_id=message_id, rating=rating, note=note)
+        # Create feedback with comment
+        fb = models.Feedback(
+            message_id=message_id, 
+            rating=rating, 
+            note=note,
+            comment=comment  # Store comment
+        )
         db.add(fb)
         db.commit()
         db.refresh(fb)
+
+        app.logger.info(f"Feedback saved: {rating} for message {message_id}, comment: {comment[:50] if comment else 'None'}")
 
         return jsonify({
             "message": "Feedback saved",
@@ -630,11 +709,13 @@ def create_feedback(current_user):
                 "id": fb.id,
                 "message_id": fb.message_id,
                 "rating": fb.rating,
-                "note": fb.note
+                "note": fb.note,
+                "comment": fb.comment
             }
         }), 200
     except Exception as e:
         db.rollback()
+        app.logger.exception("Error saving feedback")
         return jsonify({"error": f"Failed to save feedback: {str(e)}"}), 500
     finally:
         db.close()
@@ -847,6 +928,91 @@ def delete_user_admin(current_user, user_id: int):
         db.rollback()
         app.logger.exception("Error deleting user")
         return jsonify({"error": f"Failed to delete user: {str(e)}"}), 500
+    finally:
+        db.close()
+
+@app.get("/api/admin/feedbacks")
+@token_required
+@admin_required
+def get_all_feedbacks(current_user):
+    """Admin-only: Get all feedbacks with notes"""
+    db: Session = next(get_db())
+    try:
+        feedbacks = db.query(models.Feedback).order_by(models.Feedback.created_at.desc()).all()
+        return jsonify([
+            {
+                "id": f.id,
+                "message_id": f.message_id,
+                "rating": f.rating,
+                "note": f.note,
+                "created_at": f.created_at.isoformat() if getattr(f, "created_at", None) else None,
+            } for f in feedbacks
+        ])
+    finally:
+        db.close()
+
+@app.get("/api/admin/feedback")
+@token_required
+@admin_required
+def get_all_feedback_admin(current_user):
+    """Admin-only: Get all feedback including comments"""
+    db: Session = next(get_db())
+    try:
+        # Get feedback with message content
+        feedbacks = db.query(
+            models.Feedback,
+            models.Message
+        ).join(
+            models.Message,
+            models.Feedback.message_id == models.Message.id
+        ).order_by(
+            models.Feedback.created_at.desc()
+        ).all()
+        
+        return jsonify([
+            {
+                "id": fb.id,
+                "message_id": fb.message_id,
+                "rating": fb.rating,
+                "comment": fb.comment,
+                "note": fb.note,
+                "created_at": fb.created_at.isoformat() if fb.created_at else None,
+                "message_content": msg.content[:200] if msg else None,  # First 200 chars
+                "document_id": msg.document_id if msg else None
+            } for fb, msg in feedbacks
+        ])
+    finally:
+        db.close()
+
+@app.get("/api/admin/feedback/negative")
+@token_required
+@admin_required
+def get_negative_feedback_admin(current_user):
+    """Admin-only: Get all negative feedback with comments"""
+    db: Session = next(get_db())
+    try:
+        feedbacks = db.query(
+            models.Feedback,
+            models.Message
+        ).join(
+            models.Message,
+            models.Feedback.message_id == models.Message.id
+        ).filter(
+            models.Feedback.rating == 'down'
+        ).order_by(
+            models.Feedback.created_at.desc()
+        ).all()
+        
+        return jsonify([
+            {
+                "id": fb.id,
+                "message_id": fb.message_id,
+                "comment": fb.comment,
+                "created_at": fb.created_at.isoformat() if fb.created_at else None,
+                "message_content": msg.content if msg else None,
+                "document_id": msg.document_id if msg else None
+            } for fb, msg in feedbacks if fb.comment  # Only with comments
+        ])
     finally:
         db.close()
 
@@ -1185,5 +1351,6 @@ def api_health():
     }), 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 5001))  # Changed to 5001 (5000 is AirPlay on macOS)
+    print(f"🚀 Starting server on http://localhost:{port}")
+    app.run(host="0.0.0.0", port=port, debug=True)
