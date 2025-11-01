@@ -1,0 +1,189 @@
+/* .welcome-container {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #6a11cb, #2575fc);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.welcome-card {
+  background: #fff;
+  padding: 60px 70px;
+  border-radius: 30px;
+  width: 600;
+  height: 500px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.7s ease-in-out;
+}
+
+.welcome-title {
+  font-size: 30px;
+  font-weight: bold;
+  margin-bottom: 35px;
+  color: #222;
+}
+
+ .welcome-title span {
+  color: #2575fc;
+} 
+
+.welcome-subtitle {
+  font-size: 20px;
+  color: #141415;
+  margin-bottom: 35px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.primary-btn {
+  background: #2575fc;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.3s;
+  margin-bottom: 25px;
+}
+
+.primary-btn:hover {
+  background: #1b5edb;
+}
+
+.secondary-btn {
+  background: #f1f1f1;
+  color: #333;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.3s;
+    margin-bottom: 25px;
+
+}
+
+.secondary-btn:hover {
+  background: #ddd;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}  */
+
+/* Splash Screen */
+/* .splash-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #6a11cb, #2575fc);
+  color: white;
+  text-align: center;
+  font-family: "Poppins", sans-serif;
+  animation: fadeIn 1.5s ease-in-out;
+}
+
+.splash-text {
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.splash-subtext {
+  font-size: 1.2rem;
+  opacity: 0.9;
+}
+
+/* Welcome Screen */
+.welcome-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: #f4f6f9;
+  font-family: "Poppins", sans-serif;
+}
+
+.welcome-card {
+  text-align: center;
+  padding: 40px;
+  background: white;
+  border-radius: 15px;
+  box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.1);
+  animation: fadeIn 1s ease-in;
+}
+
+.logo {
+  font-size: 2.5rem;
+  color: #105ada;
+  margin-bottom: 15px;
+}
+
+.tagline {
+  font-size: 1.3rem;
+  margin-bottom: 40px;
+  max-width: 600px;
+  line-height: 1.5;
+  color: #a7bee1 !important;/* Light blue */
+  font-weight: 500; 
+}
+
+.button-group {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap; /* Ensures buttons stay on one line on small screens */
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Space between icon and text */
+  padding: 12px 25px;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+/* Updated to match your React classes */
+.btn.primary {
+  background: #2575fc;
+  color: white;
+}
+
+.btn.secondary {
+  background: #6a11cb;
+  color: white;
+}
+
+.btn:hover {
+  opacity: 0.85;
+  transform: translateY(-2px);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
